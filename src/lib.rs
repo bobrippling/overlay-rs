@@ -41,6 +41,12 @@ pub fn overlay(attr: TokenStream, item: TokenStream) -> TokenStream {
     let input = parse_macro_input!(item as DeriveInput);
     let name = input.ident;
 
+    if !input.generics.params.is_empty() {
+        return TokenStream::from(quote! {
+            compile_error!("Generics are not supported");
+        });
+    }
+
     assert!(attr.is_empty(), "No attributes expected");
 
     let fields = if let Data::Struct(data_struct) = input.data {
