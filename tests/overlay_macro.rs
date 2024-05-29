@@ -1,6 +1,7 @@
 use overlay_macro::overlay;
 
 #[overlay]
+#[derive(Clone)]
 pub struct InquiryCommand {
     #[bit_byte(7, 0, 0, 0)]
     pub op_code: u8,
@@ -30,6 +31,8 @@ fn getters() {
     assert_eq!(inq.product_data(), true);
     assert_eq!(inq.page_code(), 3);
     assert_eq!(inq.allocation_length(), 260);
+
+    let _attr_propagation: InquiryCommand = Clone::clone(inq);
 }
 
 #[test]
