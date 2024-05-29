@@ -2,6 +2,40 @@ use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{parse_macro_input, Data, DeriveInput, Fields, Lit, Meta, NestedMeta, Type};
 
+/**
+ * Attribute macro for overlaying a byte/bit-level description of a struct on arbitrary byte data.
+ *
+ * # Field Attributes
+ *
+ * | Name          | Description |
+ * |---------------|-------------|
+ * | start_byte    | The byte in the struct where this field starts (zero based) |
+ * | end_byte      | The byte in the struct where this field ends (zero based, inclusive) |
+ * | start_bit     | The bit within the collection of bytes demarked above, where this field starts (zero based, inclusive) |
+ * | end_bit       | The bit within the collection of bytes demarked above, where this field ends (zero based, inclusive) |
+ *
+ * # Example
+ *
+ * ```rust
+ * use overlay_macro::overlay;
+ *
+ * #[overlay]
+ * pub struct InquiryCommand {
+ *     #[bit_byte(7, 0, 0, 0)]
+ *     pub op_code: u8,
+ *
+ *     #[bit_byte(0, 0, 1, 1)]
+ *     pub enable_vital_product_data: bool,
+ *
+ *     #[bit_byte(7, 0, 2, 2)]
+ *     pub page_code: u8,
+ *
+ *     #[bit_byte(7, 0, 3, 4)]
+ *     pub allocation_length: u16,
+ * }
+ * ```
+ */
+
 #[proc_macro_attribute]
 pub fn overlay(attr: TokenStream, item: TokenStream) -> TokenStream {
     let input = parse_macro_input!(item as DeriveInput);
