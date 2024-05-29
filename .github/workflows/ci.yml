@@ -9,7 +9,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
+    - name: build
+      run: cd overlay && cargo build
     - name: test
       run: cd overlay_macro && cargo test
-    - name: style
+    - name: style overlay
+      run: cd overlay && cargo fmt && git diff --exit-code
+    - name: style overlay_macro
       run: cd overlay_macro && cargo fmt && git diff --exit-code
