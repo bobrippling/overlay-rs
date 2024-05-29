@@ -143,10 +143,18 @@ pub fn overlay(attr: TokenStream, item: TokenStream) -> TokenStream {
                             }
                             let mask = mask;
 
+                            println!("{}\n  mask = {:032b}", quote::quote!{#setter_name}, mask);
+
                             let orig = self.#field_name();
 
+                            println!("  orig = {:032b}", orig);
+                            println!("  val  = {:032b}", val);
+
                             let mut new = ((val as u32) << #start_bit) & mask;
+
+                            println!("  new  = {:032b}", new);
                             new |= orig as u32 & !mask;
+                            println!("  new  = {:032b} # | orig", new);
 
                             for i in (#start_byte..=#end_byte).rev() {
                                 self.0[i] = new as u8;
