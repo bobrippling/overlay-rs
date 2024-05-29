@@ -94,6 +94,8 @@ pub fn overlay(attr: TokenStream, item: TokenStream) -> TokenStream {
                 last_byte = last_byte.max(end_byte);
 
                 let ty = &field.ty;
+                let vis = &field.vis;
+
                 let is_bool = match &ty {
                     Type::Path(type_path) => {
                         quote::ToTokens::into_token_stream(type_path.clone()).to_string() == "bool"
@@ -103,14 +105,14 @@ pub fn overlay(attr: TokenStream, item: TokenStream) -> TokenStream {
 
                 let getter = if is_bool {
                     quote! {
-                        pub fn #field_name(&self) -> bool {
+                        #vis fn #field_name(&self) -> bool {
                             let byte = self.0[#start_byte];
                             (byte >> #start_bit) & 1 != 0
                         }
                     }
                 } else {
                     quote! {
-                        pub fn #field_name(&self) -> #ty {
+                        #vis fn #field_name(&self) -> #ty {
                             let mut value = 0_u32;
                             for i in #start_byte..=#end_byte {
                                 value <<= 8;
@@ -133,7 +135,7 @@ pub fn overlay(attr: TokenStream, item: TokenStream) -> TokenStream {
                 let setter_name = format_ident!("set_{}", field_name);
                 let setter = if is_bool {
                     quote! {
-                        pub fn #setter_name(&mut self, val: bool) {
+                        #vis fn #setter_name(&mut self, val: bool) {
                             let bit_value = if val { 1 } else { 0 };
                             self.0[#start_byte] &= !(1 << #start_bit);
                             self.0[#start_byte] |= (bit_value << #start_bit) as u8;
@@ -141,7 +143,7 @@ pub fn overlay(attr: TokenStream, item: TokenStream) -> TokenStream {
                     }
                 } else {
                     quote! {
-                        pub fn #setter_name(&mut self, val: #ty) {
+                        #vis fn #setter_name(&mut self, val: #ty) {
                             let mut mask = (!0_u32 << #start_bit);
                             if #end_bit > 0 {
                                 mask &= (!0_u32 >> (32 - #end_bit - 1));
@@ -172,8 +174,9 @@ pub fn overlay(attr: TokenStream, item: TokenStream) -> TokenStream {
     }
 
     let byte_count = last_byte + 1;
+    let vis = input.vis;
     let expanded = quote! {
-        struct #name([u8; #byte_count]);
+        #vis struct #name([u8; #byte_count]);
 
         impl #name {
             #(#getters)*
