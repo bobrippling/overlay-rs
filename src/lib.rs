@@ -38,6 +38,8 @@ use syn::{parse_macro_input, Data, DeriveInput, Fields, Lit, Meta, NestedMeta, T
 
 #[proc_macro_attribute]
 pub fn overlay(attr: TokenStream, item: TokenStream) -> TokenStream {
+    assert!(attr.is_empty(), "No attributes expected");
+
     let input = parse_macro_input!(item as DeriveInput);
     let name = input.ident;
 
@@ -46,8 +48,6 @@ pub fn overlay(attr: TokenStream, item: TokenStream) -> TokenStream {
             compile_error!("Generics are not supported");
         });
     }
-
-    assert!(attr.is_empty(), "No attributes expected");
 
     let fields = if let Data::Struct(data_struct) = input.data {
         if let Fields::Named(fields) = data_struct.fields {
