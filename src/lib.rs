@@ -65,7 +65,40 @@ pub fn overlay(attr: TokenStream, item: TokenStream) -> TokenStream {
             const ATTR_NAME: &str = "bit_byte";
             if attr.path.is_ident(ATTR_NAME) {
                 found = true;
+                /*
+                let meta = attr.parse_meta().unwrap();
+                let mut start_bit = None;
+                let mut end_bit = None;
+                let mut start_byte = None;
+                let mut end_byte = None;
 
+                for nested_meta in meta_list.nested {
+                    if let NestedMeta::Meta(Meta::NameValue(nv)) = nested_meta {
+                        if nv.path.is_ident("start_bit") {
+                            if let syn::Lit::Int(lit) = nv.lit {
+                                start_bit = Some(lit.base10_parse::<usize>().unwrap());
+                            }
+                        } else if nv.path.is_ident("end_bit") {
+                            if let syn::Lit::Int(lit) = nv.lit {
+                                end_bit = Some(lit.base10_parse::<usize>().unwrap());
+                            }
+                        } else if nv.path.is_ident("start_byte") {
+                            if let syn::Lit::Int(lit) = nv.lit {
+                                start_byte = Some(lit.base10_parse::<usize>().unwrap());
+                            }
+                        } else if nv.path.is_ident("end_byte") {
+                            if let syn::Lit::Int(lit) = nv.lit {
+                                end_byte = Some(lit.base10_parse::<usize>().unwrap());
+                            }
+                        }
+                    }
+                }
+
+                let start_bit = start_bit.expect("start_bit attribute is required");
+                let end_bit = end_bit.expect("end_bit attribute is required");
+                let start_byte = start_byte.expect("start_byte attribute is required");
+                let end_byte = end_byte.expect("end_byte attribute is required");
+                */
                 let Ok(Meta::List(meta_list)) = attr.parse_meta() else {
                     panic!("start/end bit and start/end byte required as arguments to {ATTR_NAME}");
                 };
