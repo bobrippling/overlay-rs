@@ -1,3 +1,4 @@
+use overlay::Overlay;
 use overlay_macro::overlay;
 
 #[overlay]
@@ -25,7 +26,7 @@ fn getters() {
         1,
         4, // 1 << 8 | 4, i.e. 260
     ];
-    let inq = InquiryCommand::overlay(&mut bytes);
+    let inq = InquiryCommand::overlay(&mut bytes).unwrap();
 
     assert_eq!(inq.op_code(), 5);
     assert_eq!(inq.product_data(), true);
@@ -44,7 +45,7 @@ fn setters() {
         1,
         4, // 1 << 8 | 4, i.e. 260
     ];
-    let inq = InquiryCommand::overlay_mut(&mut bytes);
+    let inq = InquiryCommand::overlay_mut(&mut bytes).unwrap();
 
     inq.set_page_code(23);
     assert_eq!(inq.0, [5, 5, 1 | (23 << 1), 1, 4]);

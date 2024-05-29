@@ -189,18 +189,6 @@ pub fn overlay(attr: TokenStream, item: TokenStream) -> TokenStream {
             #(#getters)*
             #(#setters)*
 
-            fn overlay(bytes: &[u8; #byte_count]) -> &Self {
-                let p: *const Self = bytes as *const _ as *const Self;
-                // SAFETY: newtype wrapper
-                unsafe { &*p }
-            }
-
-            fn overlay_mut(bytes: &mut [u8; #byte_count]) -> &mut Self {
-                let p: *mut Self = bytes as *mut _ as *mut Self;
-                // SAFETY: newtype wrapper
-                unsafe { &mut *p }
-            }
-
             fn as_bytes(&self) -> &[u8; #byte_count] {
                 &self.0
             }
@@ -208,6 +196,29 @@ pub fn overlay(attr: TokenStream, item: TokenStream) -> TokenStream {
             fn as_bytes_mut(&mut self) -> &mut [u8; #byte_count] {
                 &mut self.0
             }
+        }
+
+        impl overlay::Overlay for #name {
+            fn overlay(bytes: &[u8]) -> core::result::Result<&Self, overlay::Error> {
+                if bytes.len() < #byte_count {
+                    return Err(overlay::Error::InsufficientLength);
+                }
+
+                let p: *const Self = bytes as *const _ as *const Self;
+                // SAFETY: newtype wrapper, length checked
+                Ok(unsafe { &*p })
+            }
+
+            fn overlay_mut(bytes: &mut [u8]) -> core::result::Result<&mut Self, overlay::Error> {
+                if bytes.len() < #byte_count {
+                    return Err(overlay::Error::InsufficientLength);
+                }
+
+                let p: *mut Self = bytes as *mut _ as *mut Self;
+                // SAFETY: newtype wrapper, length checked
+                Ok(unsafe { &mut *p })
+            }
+
         }
     };
 
