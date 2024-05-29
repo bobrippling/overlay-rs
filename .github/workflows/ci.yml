@@ -10,6 +10,6 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: test
-      run: cargo test
+      run: cd overlay_macro && cargo test
     - name: style
-      run: cargo fmt && git diff --exit-code
+      run: cd overlay_macro && cargo fmt && git diff --exit-code
