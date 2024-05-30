@@ -185,6 +185,7 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
 
     let expanded = quote! {
         #(#attrs)*
+        #[repr(transparent)]
         #vis struct #name([u8; #byte_count]);
 
         impl #name {
