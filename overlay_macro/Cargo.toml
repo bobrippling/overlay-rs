@@ -2,6 +2,13 @@
 name = "overlay_macro"
 version = "1.0.0"
 edition = "2021"
+description = "A proc-macro for implementing Overlay, to reinterpret a slice of bytes as a bit/byte packed struct"
+license = "GPL-3.0-or-later"
+homepage = "https://github.com/bobrippling/overlay-rs"
+repository = "https://github.com/bobrippling/overlay-rs"
+readme = "../README.md"
+categories = ["embedded", "encoding"]
+keywords = ["struct", "overlay", "reinterpret", "transmute", "macro"]
 
 [lib]
 proc-macro = true
