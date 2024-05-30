@@ -65,9 +65,11 @@ pub fn overlay(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let mut getters = vec![];
     let mut setters = vec![];
+    let mut field_names = vec![];
     let mut last_byte = 0;
     for field in fields {
         let field_name = field.ident.expect("named field");
+        field_names.push(field_name.clone());
 
         let mut found = false;
         for attr in field.attrs {
@@ -219,6 +221,14 @@ pub fn overlay(attr: TokenStream, item: TokenStream) -> TokenStream {
                 Ok(unsafe { &mut *p })
             }
 
+        }
+
+        impl core::fmt::Debug for #name {
+            fn fmt(&self, fmt: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                fmt.debug_struct(stringify!(#name))
+                    #(.field(stringify!(#field_names), &self.#field_names()))*
+                    .finish()
+            }
         }
     };
 
