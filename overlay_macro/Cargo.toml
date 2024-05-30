@@ -1,6 +1,6 @@
 [package]
 name = "overlay_macro"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 
 [lib]
@@ -11,4 +11,4 @@ syn = "1.0"
 quote = "1.0"
 
 [dev-dependencies]
-overlay = { path = "../overlay" }
+overlay = "1.0"
