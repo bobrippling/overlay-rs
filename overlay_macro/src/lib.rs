@@ -41,8 +41,8 @@ use syn::{parse_macro_input, Data, DeriveInput, Fields, Lit, Meta, NestedMeta, T
  */
 
 #[proc_macro_attribute]
-pub fn overlay(attr: TokenStream, item: TokenStream) -> TokenStream {
-    assert!(attr.is_empty(), "No attributes expected");
+pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
+    assert!(macro_attrs.is_empty(), "No attributes expected");
 
     let input = parse_macro_input!(item as DeriveInput);
     let name = input.ident;
