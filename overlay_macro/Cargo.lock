@@ -4,11 +4,13 @@ version = 3
 
 [[package]]
 name = "overlay"
-version = "0.1.0"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "632480bf65b00af4274ce656b8a09d69ba7931ca38a21d13c244043c84e7ed0e"
 
 [[package]]
 name = "overlay_macro"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "overlay",
  "quote",
