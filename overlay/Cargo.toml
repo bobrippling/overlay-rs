@@ -2,5 +2,12 @@
 name = "overlay"
 version = "1.0.0"
 edition = "2021"
+description = "An Overlay trait for reinterpreting a slice of bytes as an arbitrary type"
+license = "GPL-3.0-or-later"
+homepage = "https://github.com/bobrippling/overlay-rs"
+repository = "https://github.com/bobrippling/overlay-rs"
+readme = "../README.md"
+categories = ["embedded", "encoding"]
+keywords = ["struct", "overlay", "reinterpret", "transmute"]
 
 [dependencies]
