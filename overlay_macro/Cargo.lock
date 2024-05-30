@@ -4,11 +4,11 @@ version = 3
 
 [[package]]
 name = "overlay"
-version = "1.0.0"
+version = "1.0.1"
 
 [[package]]
 name = "overlay_macro"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "overlay",
  "quote",

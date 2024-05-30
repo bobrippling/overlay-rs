@@ -1,6 +1,1 @@
-A proc-macro for generating a struct which can be overlaid. See the documentation in `src/lib.rs` for usage and examples.
-
-# Todo
-
-- Support for enums
-- Support for individual fields larger than `u32` ?
+See the [`overlay_macro` docs](overlay_macro/README.md) and the [`overlay` docs](overlay/README.md)
