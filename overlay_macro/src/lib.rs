@@ -249,11 +249,11 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
             #(#getters)*
             #(#setters)*
 
-            fn as_bytes(&self) -> &[u8; #byte_count] {
+            pub fn as_bytes(&self) -> &[u8; #byte_count] {
                 &self.0
             }
 
-            fn as_bytes_mut(&mut self) -> &mut [u8; #byte_count] {
+            pub fn as_bytes_mut(&mut self) -> &mut [u8; #byte_count] {
                 &mut self.0
             }
         }
