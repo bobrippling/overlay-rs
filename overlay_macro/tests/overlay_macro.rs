@@ -81,3 +81,19 @@ fn debug() {
         "InquiryCommand { op_code: 5, product_data: true, page_code: 3, allocation_length: 260 }"
     );
 }
+
+#[test]
+fn init() {
+    let inq = InquiryCommand::builder()
+        .op_code(5)
+        .allocation_length(4521)
+        .build();
+
+    assert_eq!(inq.bytes(), &[
+        5,
+        0,
+        0,
+        17,
+        8,
+    ]);
+}

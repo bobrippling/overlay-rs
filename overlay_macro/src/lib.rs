@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, Data, DeriveInput, Fields, Lit, Meta, NestedMeta, Type};
+use syn::{parse_macro_input, punctuated::Punctuated, Data, DeriveInput, Fields, Ident, Lit, Meta, NestedMeta, Type};
 
 /**
  * Attribute macro for overlaying a byte/bit-level description of a struct on arbitrary byte data.
@@ -72,6 +72,8 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
     } else {
         unimplemented!()
     };
+
+    let builder = generate_builder(&name, &fields);
 
     let mut getters = vec![];
     let mut setters = vec![];
@@ -281,10 +283,53 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
 
         }
 
+        #builder
+
         #debug_impl
     };
 
     TokenStream::from(expanded)
+}
+
+fn generate_builder(
+    name: &Ident,
+    fields: &Punctuated<syn::Field, syn::token::Comma>
+) -> impl quote::ToTokens {
+    let builder = format_ident!("{}Builder", name);
+
+    let builder_methods = fields
+        .iter()
+        .map(|field| {
+            let name = field.ident.as_ref().expect("named field");
+            let ty = &field.ty;
+            let setter = format_ident!("set_{}", name);
+
+            quote! {
+                pub fn #name(self, val: #ty) -> Self {
+                    self.0.#setter(val);
+                    self
+                }
+            }
+        });
+
+    // TODO: move these into the setter code above, append to builder_methods there
+    quote! {
+        impl #name {
+            fn builder() -> #builder {
+                todo!()
+            }
+        }
+
+        struct #builder(#name);
+
+        impl #builder {
+            #(#builder_methods)*
+
+            fn build(self) -> #name {
+                self.0
+            }
+        }
+    }
 }
 
 fn unwrap_int_lit(args: &mut dyn Iterator<Item = &NestedMeta>, name: &str) -> usize {
