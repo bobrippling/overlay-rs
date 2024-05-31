@@ -43,6 +43,13 @@ use syn::{parse_macro_input, Data, DeriveInput, Fields, Lit, Meta, NestedMeta, T
  * calling each property in turn, as-if the struct was a POD.
  */
 
+enum FieldTy {
+    Integer,
+    Bool,
+    Enum,
+    ByteArray,
+}
+
 #[proc_macro_attribute]
 pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
     assert!(macro_attrs.is_empty(), "No attributes expected");
@@ -105,70 +112,79 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
                 let ty = &field.ty;
                 let vis = &field.vis;
 
-                let is_bool = match &ty {
-                    Type::Path(type_path) => {
-                        quote::ToTokens::into_token_stream(type_path.clone()).to_string() == "bool"
-                    }
-                    _ => false,
-                };
+                let field_ty = match_type(ty).expect("invalid field type: expected integer, bool, C-style enum or [u8; N]");
 
-                let getter = if is_bool {
-                    quote! {
-                        #vis fn #field_name(&self) -> bool {
-                            let byte = self.0[#start_byte];
-                            (byte >> #start_bit) & 1 != 0
+                let getter = match field_ty {
+                    FieldTy::Bool => {
+                        quote! {
+                            #vis fn #field_name(&self) -> bool {
+                                let byte = self.0[#start_byte];
+                                (byte >> #start_bit) & 1 != 0
+                            }
                         }
                     }
-                } else {
-                    quote! {
-                        #vis fn #field_name(&self) -> #ty {
-                            let mut value = 0_u32;
-                            for i in #start_byte..=#end_byte {
-                                value <<= 8;
-                                value |= self.0[i] as u32;
-                            }
+                    FieldTy::Integer => {
+                        quote! {
+                            #vis fn #field_name(&self) -> #ty {
+                                let mut value = 0_u32;
+                                for i in #start_byte..=#end_byte {
+                                    value <<= 8;
+                                    value |= self.0[i] as u32;
+                                }
 
-                            // mask off 0..start_bit
-                            value &= !0_u32 << #start_bit;
-                            // mask off end_bit..
-                            if #end_bit > 0 {
-                                value &= !0_u32 >> (32 - #end_bit);
-                            }
+                                // mask off 0..start_bit
+                                value &= !0_u32 << #start_bit;
+                                // mask off end_bit..
+                                if #end_bit > 0 {
+                                    value &= !0_u32 >> (32 - #end_bit);
+                                }
 
-                            (value >> #start_bit) as _
+                                (value >> #start_bit) as _
+                            }
                         }
+                    }
+                    FieldTy::Enum => todo!("enum fields"),
+                    FieldTy::ByteArray => {
+                        todo!("byte array fields");
                     }
                 };
                 getters.push(getter);
 
                 let setter_name = format_ident!("set_{}", field_name);
-                let setter = if is_bool {
-                    quote! {
-                        #vis fn #setter_name(&mut self, val: bool) {
-                            let bit_value = if val { 1 } else { 0 };
-                            self.0[#start_byte] &= !(1 << #start_bit);
-                            self.0[#start_byte] |= (bit_value << #start_bit) as u8;
+                let setter = match field_ty {
+                    FieldTy::Bool => {
+                        quote! {
+                            #vis fn #setter_name(&mut self, val: bool) {
+                                let bit_value = if val { 1 } else { 0 };
+                                self.0[#start_byte] &= !(1 << #start_bit);
+                                self.0[#start_byte] |= (bit_value << #start_bit) as u8;
+                            }
                         }
                     }
-                } else {
-                    quote! {
-                        #vis fn #setter_name(&mut self, val: #ty) {
-                            let mut mask = (!0_u32 << #start_bit);
-                            if #end_bit > 0 {
-                                mask &= (!0_u32 >> (32 - #end_bit - 1));
-                            }
-                            let mask = mask;
+                    FieldTy::Integer => {
+                        quote! {
+                            #vis fn #setter_name(&mut self, val: #ty) {
+                                let mut mask = (!0_u32 << #start_bit);
+                                if #end_bit > 0 {
+                                    mask &= (!0_u32 >> (32 - #end_bit - 1));
+                                }
+                                let mask = mask;
 
-                            let orig = self.#field_name();
+                                let orig = self.#field_name();
 
-                            let mut new = ((val as u32) << #start_bit) & mask;
-                            new |= orig as u32 & !mask;
+                                let mut new = ((val as u32) << #start_bit) & mask;
+                                new |= orig as u32 & !mask;
 
-                            for i in (#start_byte..=#end_byte).rev() {
-                                self.0[i] = new as u8;
-                                new >>= 8;
+                                for i in (#start_byte..=#end_byte).rev() {
+                                    self.0[i] = new as u8;
+                                    new >>= 8;
+                                }
                             }
                         }
+                    }
+                    FieldTy::Enum => todo!("enum fields"),
+                    FieldTy::ByteArray => {
+                        todo!("byte array fields");
                     }
                 };
                 setters.push(setter);
@@ -276,4 +292,27 @@ fn unwrap_int_lit(args: &mut dyn Iterator<Item = &NestedMeta>, name: &str) -> us
         Some(NestedMeta::Lit(Lit::Int(lit))) => lit.base10_parse().unwrap(),
         _ => panic!("Expected integer literal for {name}"),
     }
+}
+
+fn match_type(ty: &Type) -> Option<FieldTy> {
+    match ty {
+        Type::Path(path) => {
+            let segment = path.path.segments.last().unwrap();
+            return Some(match segment.ident.to_string().as_str() {
+                "u8" | "i8" | "u16" | "i16" | "u32" | "i32" | "u64" | "i64" | "u128" | "i128" | "usize" | "isize" => FieldTy::Integer,
+                "bool" => FieldTy::Bool,
+                _ => FieldTy::Enum,
+            });
+        },
+        Type::Array(array) => {
+            if let Type::Path(ref path) = *array.elem {
+                if path.path.segments.last().unwrap().ident == "u8" {
+                    return Some(FieldTy::ByteArray);
+                }
+            }
+        },
+        _ => {}
+    }
+
+    None
 }
