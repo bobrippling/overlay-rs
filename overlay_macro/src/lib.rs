@@ -162,10 +162,15 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
                 };
                 getters.push(getter);
 
+                // e.g. `_x: u8` -> `set__x()`
+                //                       ^ rustc warns about this
+                let setter_attr = quote! { #[allow(non_snake_case)] };
+
                 let setter_name = format_ident!("set_{}", field_name);
                 let setter = match field_ty {
                     FieldTy::Bool => {
                         quote! {
+                            #setter_attr
                             #vis fn #setter_name(&mut self, val: bool) {
                                 let bit_value = if val { 1 } else { 0 };
                                 self.0[#start_byte] &= !(1 << #start_bit);
@@ -175,6 +180,7 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
                     }
                     FieldTy::Integer => {
                         quote! {
+                            #setter_attr
                             #vis fn #setter_name(&mut self, val: #ty) {
                                 let mut mask = (!0_u32 << #start_bit);
                                 if #end_bit > 0 {
@@ -197,6 +203,7 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
                     FieldTy::Enum => todo!("enum fields"),
                     FieldTy::ByteArray => {
                         quote! {
+                            #setter_attr
                             #vis fn #setter_name(&mut self, bytes: &#ty) {
                                 self.0[#start_byte..=#end_byte]
                                     .copy_from_slice(bytes);
