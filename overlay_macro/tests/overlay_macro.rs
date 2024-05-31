@@ -25,7 +25,7 @@ pub struct NoDebug {
 }
 
 #[test]
-fn getters() {
+fn integer_bool_getters() {
     let mut bytes = [
         5_u8,
         5, // true, 1<<4 is ignored
@@ -44,7 +44,7 @@ fn getters() {
 }
 
 #[test]
-fn setters() {
+fn integer_bool_setters() {
     let mut bytes = [
         5_u8,
         5, // true, 1<<4 is ignored
@@ -80,4 +80,24 @@ fn debug() {
         &out,
         "InquiryCommand { op_code: 5, product_data: true, page_code: 3, allocation_length: 260 }"
     );
+}
+
+#[test]
+fn byte_array_getters() {
+    #[overlay]
+    #[derive(Debug)]
+    struct Abc {
+        #[bit_byte(7, 0, 0, 0)]
+        pad: u8,
+
+        #[bit_byte(0, 0, 1, 3)]
+        bytes: [u8; 3],
+    }
+    let mut bytes = [ 1, 2, 3, 4 ];
+    let abc = Abc::overlay_mut(&mut bytes).unwrap();
+
+    assert_eq!(abc.bytes(), &[2, 3, 4]);
+
+    abc.set_bytes(&[99, 3, 255]);
+    assert_eq!(abc.as_bytes(), &[1, 99, 3, 255]);
 }

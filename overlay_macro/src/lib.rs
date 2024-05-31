@@ -145,7 +145,19 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
                     }
                     FieldTy::Enum => todo!("enum fields"),
                     FieldTy::ByteArray => {
-                        todo!("byte array fields");
+                        assert!(
+                            start_bit == 0 && end_bit == 0,
+                            "byte arrays must have start & end bit set to zero"
+                        );
+
+                        quote! {
+                            #vis fn #field_name(&self) -> &#ty {
+                                return self
+                                    .0[#start_byte..=#end_byte]
+                                    .try_into()
+                                    .unwrap(); // could make this unsafe and drop the try
+                            }
+                        }
                     }
                 };
                 getters.push(getter);
@@ -184,7 +196,12 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
                     }
                     FieldTy::Enum => todo!("enum fields"),
                     FieldTy::ByteArray => {
-                        todo!("byte array fields");
+                        quote! {
+                            #vis fn #setter_name(&mut self, bytes: &#ty) {
+                                self.0[#start_byte..=#end_byte]
+                                    .copy_from_slice(bytes);
+                            }
+                        }
                     }
                 };
                 setters.push(setter);
