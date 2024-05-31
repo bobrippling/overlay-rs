@@ -280,6 +280,15 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
             pub fn as_bytes_mut(&mut self) -> &mut [u8; #byte_count] {
                 &mut self.0
             }
+
+            pub const fn new() -> Self {
+                // SAFETY: all fields are POD (specifically int/bool/array thereof),
+                // and all-zero byte-pattern is valid for these
+                unsafe {
+                    use core::mem;
+                    mem::zeroed()
+                }
+            }
         }
 
         impl overlay::Overlay for #name {
