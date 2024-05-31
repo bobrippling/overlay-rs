@@ -286,13 +286,25 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
                 Ok(unsafe { &*p })
             }
 
+            fn overlay_n(bytes: &mut [u8; #byte_count]) -> &mut Self {
+                // SAFETY: transparent newtype wrapper, array length matches
+                Ok(unsafe { &mut *p })
+            }
+
             fn overlay_mut(bytes: &mut [u8]) -> core::result::Result<&mut Self, overlay::Error> {
                 if bytes.len() < #byte_count {
                     return Err(overlay::Error::InsufficientLength);
                 }
 
-                let p: *mut Self = bytes as *mut _ as *mut Self;
-                // SAFETY: newtype wrapper, length checked
+                let p = bytes as *mut _ as *mut [u8; #byte_count];
+                // SAFETY: we've just checked the length, we can drop &[u8] -> &[u8; N]
+                let p = unsafe { &*p };
+
+                Self::overlay_mut_n(p)
+            }
+
+            fn overlay_mut_n(bytes: &mut [u8; #byte_count]) -> &mut Self {
+                // SAFETY: transparent newtype wrapper, array length matches
                 Ok(unsafe { &mut *p })
             }
 
