@@ -92,12 +92,15 @@ fn byte_array_getters() {
 
         #[bit_byte(0, 0, 1, 3)]
         bytes: [u8; 3],
+
+        #[bit_byte(7, 0, 4, 4)]
+        pad2: u8,
     }
-    let mut bytes = [ 1, 2, 3, 4 ];
+    let mut bytes = [ 1, 2, 3, 4, 5];
     let abc = Abc::overlay_mut(&mut bytes).unwrap();
 
     assert_eq!(abc.bytes(), &[2, 3, 4]);
 
     abc.set_bytes(&[99, 3, 255]);
-    assert_eq!(abc.as_bytes(), &[1, 99, 3, 255]);
+    assert_eq!(abc.as_bytes(), &[1, 99, 3, 255, 5]);
 }
