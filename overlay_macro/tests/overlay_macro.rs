@@ -122,3 +122,51 @@ fn new() {
     assert_eq!(InquiryCommand::new().as_bytes(), &[0; 5]);
     assert_eq!(InquiryCommand::default().as_bytes(), &[0; 5]);
 }
+
+#[test]
+fn enum_getters_setters() {
+    #[derive(Debug, Eq, PartialEq)]
+    #[allow(dead_code)]
+    enum E {
+        X,
+        Y,
+        Z,
+    }
+
+    impl TryFrom<u32> for E {
+        type Error = ();
+
+        fn try_from(v: u32) -> Result<Self, Self::Error> {
+            Ok(match v {
+                0 => Self::X,
+                1 => Self::Y,
+                2 => Self::Z,
+                _ => return Err(()),
+            })
+        }
+    }
+
+    #[overlay]
+    #[derive(Debug)]
+    struct Abc {
+        #[bit_byte(7, 0, 0, 0)]
+        e0: E,
+
+        #[bit_byte(4, 2, 1, 1)]
+        e1: E,
+
+        #[bit_byte(7, 0, 2, 2)]
+        u: u8,
+    }
+    let mut bytes = [E::Y as _, (3 << 2) | 3, 7];
+    let abc = Abc::overlay_mut(&mut bytes).unwrap();
+
+    assert_eq!(abc.e0(), Ok(E::Y));
+    assert_eq!(abc.e1(), Err(()));
+
+    abc.set_e0(E::Z);
+    assert_eq!(abc.as_bytes(), &[E::Z as _, (3 << 2) | 3, 7]);
+
+    abc.set_e1(E::Y);
+    assert_eq!(abc.as_bytes(), &[E::Z as _, ((E::Y as u8) << 2) | 3, 7]);
+}
