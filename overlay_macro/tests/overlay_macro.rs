@@ -96,7 +96,7 @@ fn byte_array_getters() {
         #[bit_byte(7, 0, 4, 4)]
         pad2: u8,
     }
-    let mut bytes = [ 1, 2, 3, 4, 5];
+    let mut bytes = [1, 2, 3, 4, 5];
     let abc = Abc::overlay_mut(&mut bytes).unwrap();
 
     assert_eq!(abc.bytes(), &[2, 3, 4]);

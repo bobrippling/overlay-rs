@@ -112,7 +112,8 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
                 let ty = &field.ty;
                 let vis = &field.vis;
 
-                let field_ty = match_type(ty).expect("invalid field type: expected integer, bool, C-style enum or [u8; N]");
+                let field_ty = match_type(ty)
+                    .expect("invalid field type: expected integer, bool, C-style enum or [u8; N]");
 
                 let getter = match field_ty {
                     FieldTy::Bool => {
@@ -332,18 +333,19 @@ fn match_type(ty: &Type) -> Option<FieldTy> {
         Type::Path(path) => {
             let segment = path.path.segments.last().unwrap();
             return Some(match segment.ident.to_string().as_str() {
-                "u8" | "i8" | "u16" | "i16" | "u32" | "i32" | "u64" | "i64" | "u128" | "i128" | "usize" | "isize" => FieldTy::Integer,
+                "u8" | "i8" | "u16" | "i16" | "u32" | "i32" | "u64" | "i64" | "u128" | "i128"
+                | "usize" | "isize" => FieldTy::Integer,
                 "bool" => FieldTy::Bool,
                 _ => FieldTy::Enum,
             });
-        },
+        }
         Type::Array(array) => {
             if let Type::Path(ref path) = *array.elem {
                 if path.path.segments.last().unwrap().ident == "u8" {
                     return Some(FieldTy::ByteArray);
                 }
             }
-        },
+        }
         _ => {}
     }
 
