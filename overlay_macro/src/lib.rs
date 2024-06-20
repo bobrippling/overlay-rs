@@ -67,10 +67,10 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
         if let Fields::Named(fields) = data_struct.fields {
             fields.named
         } else {
-            unimplemented!()
+            unimplemented!("only named-field structs are supported")
         }
     } else {
-        unimplemented!()
+        unimplemented!("only structs can be overlaid")
     };
 
     let mut getters = vec![];
