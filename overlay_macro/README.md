@@ -26,6 +26,6 @@ This will create a wrapper struct around an array of bytes, with generated gette
 
 ## Todo
 
-- Support for enums
+- Support for nested structs
 - Support for individual fields larger than `u32` ?
 - `compile_error!()`
