@@ -187,16 +187,13 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
                                 if #end_bit > 0 {
                                     mask &= (!0_u32 >> (32 - #end_bit - 1));
                                 }
-                                let mask = mask;
-
-                                let orig = self.#field_name();
 
                                 let mut new = ((val as u32) << #start_bit) & mask;
-                                new |= orig as u32 & !mask;
 
                                 for i in (#start_byte..=#end_byte).rev() {
-                                    self.0[i] = new as u8;
+                                    self.0[i] = self.0[i] & (!mask as u8) | (new as u8);
                                     new >>= 8;
+                                    mask >>= 8;
                                 }
                             }
                         }

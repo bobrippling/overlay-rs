@@ -52,13 +52,25 @@ fn integer_bool_setters() {
         1,
         4, // 1 << 8 | 4, i.e. 260
     ];
-    let inq = InquiryCommand::overlay_mut(&mut bytes).unwrap();
 
-    inq.set_page_code(23);
-    assert_eq!(inq.0, [5, 5, 1 | (23 << 1), 1, 4]);
+    {
+        let inq = InquiryCommand::overlay_mut(&mut bytes).unwrap();
 
-    inq.set_allocation_length(1281);
-    assert_eq!(inq.0, [5, 5, 1 | (23 << 1), 5, 1]);
+        inq.set_page_code(23);
+        assert_eq!(inq.0, [5, 5, 1 | (23 << 1), 1, 4]);
+
+        inq.set_allocation_length(1281);
+        assert_eq!(inq.0, [5, 5, 1 | (23 << 1), 5, 1]);
+    }
+
+    {
+        bytes[2] = 1 | (2 << 1); // something without the low-bit set
+        let inq = InquiryCommand::overlay_mut(&mut bytes).unwrap();
+        assert_eq!(inq.page_code(), 2);
+
+        inq.set_page_code(158);
+        assert_eq!(inq.0, [5, 5, 1 | (158 << 1), 5, 1]);
+    }
 }
 
 #[test]
