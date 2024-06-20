@@ -48,6 +48,50 @@ enum FieldTy {
  *
  * The `Debug` attribute is plucked from the `derive` attribute (if present) and implemented by
  * calling each property in turn, as-if the struct was a POD.
+ *
+ * # Enums
+ *
+ * Enum members are supported, provided they come with a `TryFrom<u32>` implementation.
+ * This can be implemented automatically by using the [`num_enum`] crate.
+ *
+ * ```rust
+ * use overlay_macro::overlay;
+ *
+ * #[derive(PartialEq, Eq, Debug)]
+ * enum Transport {
+ *     Bike, Bus, Car
+ * }
+ *
+ * #[overlay]
+ * pub struct Person {
+ *     #[bit_byte(4, 1, 0, 0)]
+ *     transport: Transport,
+ * }
+ *
+ * impl TryFrom<u32> for Transport {
+ *     type Error = ();
+ *
+ *     fn try_from(v: u32) -> Result<Self, Self::Error> {
+ *         Ok(match v {
+ *             v if v == Self::Bike as _ => Self::Bike,
+ *             v if v == Self::Bus  as _ => Self::Bus,
+ *             v if v == Self::Car  as _ => Self::Car,
+ *             _ => return Err(()),
+ *         })
+ *     }
+ * }
+ *
+ * assert_eq!(Transport::try_from(1), Ok(Transport::Bus));
+ * ```
+ *
+ * The enum representation doesn't matter, provided the `bit_byte` declaration leaves room for
+ * it. A `u32` is currently used as the intermediate type for masking and storing the enum's
+ * representation.
+ *
+ * Note that the overlay conversion may not round-trip if the `TryFrom` implementation doesn't map
+ * the enum's entries from their actual discriminant values.
+ *
+ * [`num_enum`]: https://crates.io/crates/num_enum
  */
 
 #[proc_macro_attribute]
@@ -144,7 +188,29 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
                             }
                         }
                     }
-                    FieldTy::Enum => todo!("enum fields"),
+                    FieldTy::Enum => {
+                        quote! {
+                            #vis fn #field_name(
+                                &self
+                            ) -> Result<#ty, <#ty as core::convert::TryFrom<u32>>::Error> {
+                                let mut value = 0_u32;
+                                for i in #start_byte..=#end_byte {
+                                    value <<= 8;
+                                    value |= self.0[i] as u32;
+                                }
+
+                                // mask off 0..start_bit
+                                value &= !0_u32 << #start_bit;
+                                // mask off end_bit..
+                                if #end_bit > 0 {
+                                    value &= !0_u32 >> (32 - #end_bit);
+                                }
+
+                                let value = value >> #start_bit;
+                                #ty::try_from(value)
+                            }
+                        }
+                    }
                     FieldTy::ByteArray => {
                         assert!(
                             start_bit == 0 && end_bit == 0,
@@ -179,7 +245,7 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
                             }
                         }
                     }
-                    FieldTy::Integer => {
+                    FieldTy::Integer | FieldTy::Enum => {
                         quote! {
                             #setter_attr
                             #vis fn #setter_name(&mut self, val: #ty) {
@@ -198,7 +264,6 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
                             }
                         }
                     }
-                    FieldTy::Enum => todo!("enum fields"),
                     FieldTy::ByteArray => {
                         quote! {
                             #setter_attr
@@ -281,7 +346,9 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
 
             pub const fn new() -> Self {
                 // SAFETY: all fields are POD (specifically int/bool/array thereof),
-                // and all-zero byte-pattern is valid for these
+                // and all-zero bit-pattern is valid for these.
+                // For enums, if the bit-pattern isn't valid, it's caught when we
+                // attempt to read that field, via `try_from`.
                 unsafe {
                     use core::mem;
                     mem::zeroed()
