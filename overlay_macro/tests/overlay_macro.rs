@@ -2,7 +2,7 @@ use overlay::Overlay;
 use overlay_macro::overlay;
 
 #[overlay]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct InquiryCommand {
     #[bit_byte(7, 0, 0, 0)]
     pub op_code: u8,
@@ -115,4 +115,10 @@ fn byte_array_getters() {
 
     abc.set_bytes(&[99, 3, 255]);
     assert_eq!(abc.as_bytes(), &[1, 99, 3, 255, 5]);
+}
+
+#[test]
+fn new() {
+    assert_eq!(InquiryCommand::new().as_bytes(), &[0; 5]);
+    assert_eq!(InquiryCommand::default().as_bytes(), &[0; 5]);
 }
