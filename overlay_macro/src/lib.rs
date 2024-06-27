@@ -236,7 +236,7 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                         quote! {
                             #vis fn #field_name(&self) -> &#ty {
-                                let p = &self.0[#start_byte..#end_byte];
+                                let p = &self.0[#start_byte..=#end_byte];
 
                                 // could make this unsafe
                                 #ty::overlay(p).unwrap()
