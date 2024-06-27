@@ -354,6 +354,8 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
                     mem::zeroed()
                 }
             }
+
+            pub const BYTE_LEN: usize = #byte_count;
         }
 
         impl overlay::Overlay for #name {
