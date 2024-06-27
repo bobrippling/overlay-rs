@@ -6,6 +6,7 @@ enum FieldTy {
     Integer,
     Bool,
     Enum,
+    Struct,
     ByteArray,
 }
 
@@ -140,6 +141,17 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
                 let start_bit = unwrap_int_lit(&mut args, "start_bit");
                 let start_byte = unwrap_int_lit(&mut args, "start_byte");
                 let end_byte = unwrap_int_lit(&mut args, "end_byte");
+                let nested = match args.next() {
+                    None => false,
+                    Some(NestedMeta::Meta(Meta::Path(path))) => {
+                        if path.is_ident("nested") {
+                            true
+                        } else {
+                            panic!("Only \"nested\" is valid as the final bit_byte specifier")
+                        }
+                    }
+                    _ => panic!("Expected \"nested\" (or nothing) as final specifier"),
+                };
                 assert!(args.next().is_none(), "too many arguments to {ATTR_NAME}");
 
                 assert!(
@@ -156,8 +168,11 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
                 let ty = &field.ty;
                 let vis = &field.vis;
 
-                let field_ty = match_type(ty)
-                    .expect("invalid field type: expected integer, bool, C-style enum or [u8; N]");
+                let field_ty = if nested {
+                    Some(FieldTy::Struct)
+                } else {
+                    match_type(ty)
+                }.expect("invalid field type: expected integer, bool, C-style enum, nested struct or [u8; N]");
 
                 let getter = match field_ty {
                     FieldTy::Bool => {
@@ -208,6 +223,21 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                                 let value = value >> #start_bit;
                                 #ty::try_from(value)
+                            }
+                        }
+                    }
+                    FieldTy::Struct => {
+                        assert!(
+                            start_bit == 0 && end_bit == 0,
+                            "nested structs must have start & end bit set to zero"
+                        );
+
+                        quote! {
+                            #vis fn #field_name(&self) -> &#ty {
+                                let p = &self.0[#start_byte..=#end_byte];
+
+                                // could make this unsafe
+                                #ty::overlay(p).unwrap()
                             }
                         }
                     }
@@ -263,6 +293,10 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
                                 }
                             }
                         }
+                    }
+                    FieldTy::Struct => {
+                        //todo!()
+                        quote! {}
                     }
                     FieldTy::ByteArray => {
                         quote! {

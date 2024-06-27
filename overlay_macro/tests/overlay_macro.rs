@@ -178,3 +178,42 @@ fn enum_getters_setters() {
     abc.set_e1(E::Y);
     assert_eq!(abc.as_bytes(), &[E::Z as _, ((E::Y as u8) << 2) | 3, 7]);
 }
+
+#[test]
+fn nested_struct() {
+    #[overlay]
+    #[derive(Debug)]
+    struct Outer {
+        #[bit_byte(7, 0, 0, 0)]
+        header: u8,
+
+        #[bit_byte(0, 0, 1, 3, nested)]
+        inner: Inner,
+    }
+    assert_eq!(Outer::BYTE_LEN, 4);
+
+    #[overlay]
+    #[derive(Debug)]
+    struct Inner {
+        #[bit_byte(16, 0, 0, 1)]
+        a: u16,
+
+        #[bit_byte(7, 0, 2, 2)]
+        b: u8,
+    }
+    assert_eq!(Inner::BYTE_LEN, 3);
+
+    let bytes = [23, 186, 3, 9];
+    {
+        let inner = Inner::overlay(&bytes[1..]).unwrap();
+        assert_eq!(inner.a(), 186 << 8 | 3);
+        assert_eq!(inner.b(), 9);
+    }
+
+    let outer = Outer::overlay(&bytes).unwrap();
+    assert_eq!(outer.header(), 23);
+
+    let inner: &_ = outer.inner();
+    assert_eq!(inner.a(), 186 << 8 | 3);
+    assert_eq!(inner.b(), 9);
+}
