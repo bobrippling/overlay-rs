@@ -74,6 +74,14 @@ fn integer_bool_setters() {
 }
 
 #[test]
+fn repr() {
+    let bytes = [0; 5];
+    let inq = InquiryCommand::overlay(&bytes).unwrap();
+
+    assert_eq!(bytes.as_ptr(), inq.as_bytes().as_ptr());
+}
+
+#[test]
 fn debug() {
     let mut bytes = [
         5_u8,
