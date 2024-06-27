@@ -4,7 +4,7 @@ use overlay_macro::overlay;
 #[overlay]
 #[derive(Clone, Debug, Default)]
 pub struct InquiryCommand {
-    #[bit_byte(7, 0, 0, 0)]
+    #[bit_byte(8, 0, 0, 0)]
     pub op_code: u8,
 
     #[bit_byte(0, 0, 1, 1)]
@@ -70,6 +70,13 @@ fn integer_bool_setters() {
 
         inq.set_page_code(158);
         assert_eq!(inq.0, [5, 5, 1 | (158 << 1), 5, 1]);
+    }
+
+    {
+        // something with the high-bit set
+        bytes[0] = 0b1000_1000;
+        let inq = InquiryCommand::overlay_mut(&mut bytes).unwrap();
+        assert_eq!(inq.op_code(), 0b1000_1000);
     }
 }
 
