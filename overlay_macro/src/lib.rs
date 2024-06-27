@@ -174,6 +174,10 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
                     match_type(ty)
                 }.expect("invalid field type: expected integer, bool, C-style enum, nested struct or [u8; N]");
 
+                // e.g. `_x: u8` -> `set__x()`
+                //                       ^ rustc warns about this
+                let setter_attr = quote! { #[allow(non_snake_case)] };
+
                 let getter = match field_ty {
                     FieldTy::Bool => {
                         quote! {
@@ -232,12 +236,21 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
                             "nested structs must have start & end bit set to zero"
                         );
 
+                        let setter_name = format_ident!("{}_mut", field_name);
+
                         quote! {
                             #vis fn #field_name(&self) -> &#ty {
                                 let p = &self.0[#start_byte..=#end_byte];
 
                                 // could make this unsafe
                                 #ty::overlay(p).unwrap()
+                            }
+
+                            #setter_attr
+                            #vis fn #setter_name(&mut self) -> &mut #ty {
+                                let p = &mut self.0[#start_byte..=#end_byte];
+
+                                #ty::overlay_mut(p).unwrap()
                             }
                         }
                     }
@@ -258,10 +271,6 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
                     }
                 };
                 getters.push(getter);
-
-                // e.g. `_x: u8` -> `set__x()`
-                //                       ^ rustc warns about this
-                let setter_attr = quote! { #[allow(non_snake_case)] };
 
                 let setter_name = format_ident!("set_{}", field_name);
                 let setter = match field_ty {
@@ -295,7 +304,7 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
                         }
                     }
                     FieldTy::Struct => {
-                        //todo!()
+                        // setter isn't provided, we just expose a &mut to the nested struct (above, with the getter)
                         quote! {}
                     }
                     FieldTy::ByteArray => {
