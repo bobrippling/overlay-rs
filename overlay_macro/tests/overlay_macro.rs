@@ -216,4 +216,13 @@ fn nested_struct() {
     let inner: &_ = outer.inner();
     assert_eq!(inner.a(), 186 << 8 | 3);
     assert_eq!(inner.b(), 9);
+
+    let mut bytes = bytes;
+    let outer = Outer::overlay_mut(&mut bytes).unwrap();
+    let inner = outer.inner_mut();
+    inner.set_a(65439);
+    inner.set_b(253);
+    outer.set_header(187);
+
+    assert_eq!(bytes, [187, (65439_u16 >> 8) as u8, 65439_u16 as u8, 253]);
 }
