@@ -6,16 +6,16 @@ A proc-macro for generating a struct which can be overlaid. See the documentatio
 #[overlay]
 #[derive(Clone, Debug)]
 pub struct InquiryCommand {
-    #[bit_byte(7, 0, 0, 0)]
+    #[overlay(byte=0, bits=0..8)]
     pub op_code: u8,
 
-    #[bit_byte(0, 0, 1, 1)]
+    #[overlay(byte=1)]
     pub enable_vital_product_data: bool,
 
-    #[bit_byte(7, 0, 2, 2)]
+    #[overlay(byte=2, bits=0..=7)]
     pub page_code: u8,
 
-    #[bit_byte(7, 0, 3, 4)]
+    #[overlay(bytes=3..=4, bits=0..=7)]
     pub allocation_length: u16,
 
     ...

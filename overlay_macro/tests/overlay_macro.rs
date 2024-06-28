@@ -4,23 +4,23 @@ use overlay_macro::overlay;
 #[overlay]
 #[derive(Clone, Debug, Default)]
 pub struct InquiryCommand {
-    #[bit_byte(8, 0, 0, 0)]
+    #[overlay(byte=0, bits=0..=8)]
     pub op_code: u8,
 
-    #[bit_byte(0, 0, 1, 1)]
+    #[overlay(byte = 1, bit = 0)]
     pub product_data: bool,
 
-    #[bit_byte(7, 1, 2, 2)]
+    #[overlay(byte=2, bits=1..=7)]
     pub page_code: u8,
 
-    #[bit_byte(13, 0, 3, 4)]
+    #[overlay(bytes=3..=4, bits=0..14)]
     pub allocation_length: u16,
 }
 
 #[overlay]
 #[derive(Clone)]
 pub struct NoDebug {
-    #[bit_byte(7, 0, 0, 0)]
+    #[overlay(byte=0, bits=0..=7)]
     pub op_code: u8,
 }
 
@@ -106,13 +106,13 @@ fn byte_array_getters() {
     #[overlay]
     #[derive(Debug)]
     struct Abc {
-        #[bit_byte(7, 0, 0, 0)]
+        #[overlay(byte=0, bits=0..=7)]
         pad: u8,
 
-        #[bit_byte(0, 0, 1, 3)]
+        #[overlay(bytes=1..=3)]
         bytes: [u8; 3],
 
-        #[bit_byte(7, 0, 4, 4)]
+        #[overlay(byte=4, bits=0..=7)]
         pad2: u8,
     }
     let mut bytes = [1, 2, 3, 4, 5];
@@ -156,13 +156,13 @@ fn enum_getters_setters() {
     #[overlay]
     #[derive(Debug)]
     struct Abc {
-        #[bit_byte(7, 0, 0, 0)]
+        #[overlay(byte = 0)] // no bits given, so 0..=7 is implied
         e0: E,
 
-        #[bit_byte(4, 2, 1, 1)]
+        #[overlay(byte=1, bits=2..=4)]
         e1: E,
 
-        #[bit_byte(7, 0, 2, 2)]
+        #[overlay(byte=2, bits=0..=7)]
         u: u8,
     }
     let mut bytes = [E::Y as _, (3 << 2) | 3, 7];

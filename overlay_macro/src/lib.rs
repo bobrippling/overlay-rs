@@ -1,6 +1,11 @@
+use std::ops::{Range, RangeInclusive};
+
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, Data, DeriveInput, Fields, Lit, Meta, NestedMeta, Type};
+use syn::{
+    parse::{Parse, ParseStream},
+    parse_macro_input, Data, DeriveInput, Fields, Ident, LitInt, Meta, NestedMeta, Token, Type,
+};
 
 enum FieldTy {
     Integer,
@@ -9,17 +14,34 @@ enum FieldTy {
     ByteArray,
 }
 
+#[derive(Debug)]
+struct OverlayAttribute {
+    byte: SingleOrRange,
+    bits: Option<SingleOrRange>,
+}
+
+#[derive(Debug)]
+enum SingleOrRange {
+    Single(u32),
+    Range(Range<u32>),
+    RangeIncl(RangeInclusive<u32>),
+}
+
 /**
  * Attribute macro for overlaying a byte/bit-level description of a struct on arbitrary byte data.
  *
  * # Field Attributes
  *
- * | Name          | Description |
- * |---------------|-------------|
- * | start_byte    | The byte in the struct where this field starts (zero based) |
- * | end_byte      | The byte in the struct where this field ends (zero based, inclusive) |
- * | start_bit     | The bit within the collection of bytes demarked above, where this field starts (zero based, inclusive) |
- * | end_bit       | The bit within the collection of bytes demarked above, where this field ends (zero based, inclusive) |
+ * #[overlay(...)] on a field can provide several parameters:
+ * `byte` - the byte at which this field resides
+ * `bytes` - the range of bytes at which this field resides
+ * `bits` - the range of relevant bits within the byte/byte-range
+ *
+ * Either `byte` or `bytes` must be specified.
+ * `bits` is optional and defaults to the entire byte range.
+ * All are zero-based.
+ *
+ * For arrays and struct members, bits may not be specified.
  *
  * # Example
  *
@@ -29,16 +51,16 @@ enum FieldTy {
  * #[overlay]
  * #[derive(Clone, Debug)]
  * pub struct InquiryCommand {
- *     #[bit_byte(7, 0, 0, 0)]
+ *     #[overlay(byte=0, bits=0..8)]
  *     pub op_code: u8,
  *
- *     #[bit_byte(0, 0, 1, 1)]
+ *     #[overlay(byte=1)] // bits inferred from `bool` type
  *     pub enable_vital_product_data: bool,
  *
- *     #[bit_byte(7, 0, 2, 2)]
+ *     #[overlay(byte=2, bits=0..=7)] // `..=` can be used as an alternative to `..`
  *     pub page_code: u8,
  *
- *     #[bit_byte(7, 0, 3, 4)]
+ *     #[overlay(bytes=3..=4)] // if not bits are given, the whole byte range is used
  *     pub allocation_length: u16,
  * }
  * ```
@@ -64,7 +86,7 @@ enum FieldTy {
  *
  * #[overlay]
  * pub struct Person {
- *     #[bit_byte(4, 1, 0, 0)]
+ *     #[overlay(byte=0, bits=1..=4)] // nothing lives at bit 0
  *     transport: Transport,
  * }
  *
@@ -84,7 +106,7 @@ enum FieldTy {
  * assert_eq!(Transport::try_from(1), Ok(Transport::Bus));
  * ```
  *
- * The enum representation doesn't matter, provided the `bit_byte` declaration leaves room for
+ * The enum representation doesn't matter, provided the `overlay` declaration leaves room for
  * it. A `u32` is currently used as the intermediate type for masking and storing the enum's
  * representation.
  *
@@ -127,31 +149,19 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
 
         let mut found = false;
         for attr in field.attrs {
-            const ATTR_NAME: &str = "bit_byte";
+            const ATTR_NAME: &str = "overlay";
             if attr.path.is_ident(ATTR_NAME) {
                 found = true;
 
-                let Ok(Meta::List(meta_list)) = attr.parse_meta() else {
-                    panic!("start/end bit and start/end byte required as arguments to {ATTR_NAME}");
-                };
+                let ranges: OverlayAttribute = attr.parse_args().unwrap();
 
-                let mut args = meta_list.nested.iter();
-                let end_bit = unwrap_int_lit(&mut args, "start_bit");
-                let start_bit = unwrap_int_lit(&mut args, "start_bit");
-                let start_byte = unwrap_int_lit(&mut args, "start_byte");
-                let end_byte = unwrap_int_lit(&mut args, "end_byte");
-                assert!(args.next().is_none(), "too many arguments to {ATTR_NAME}");
+                if let Some(bits) = &ranges.bits {
+                    bits.assert_range_valid("bit");
+                }
 
-                assert!(
-                    start_bit <= end_bit,
-                    "start bit ({start_bit}) must not be greater than end bit ({end_bit})"
-                );
-                assert!(
-                    start_byte <= end_byte,
-                    "start byte ({start_byte}) must not be greater than end byte ({end_byte})"
-                );
+                ranges.byte.assert_range_valid("byte");
 
-                last_byte = last_byte.max(end_byte);
+                last_byte = last_byte.max(ranges.byte.end_inclusive());
 
                 let ty = &field.ty;
                 let vis = &field.vis;
@@ -159,128 +169,142 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
                 let field_ty = match_type(ty)
                     .expect("invalid field type: expected integer, bool, C-style enum or [u8; N]");
 
-                let getter = match field_ty {
-                    FieldTy::Bool => {
-                        quote! {
-                            #vis fn #field_name(&self) -> bool {
-                                let byte = self.0[#start_byte];
-                                (byte >> #start_bit) & 1 != 0
-                            }
-                        }
-                    }
-                    FieldTy::Integer => {
-                        quote! {
-                            #vis fn #field_name(&self) -> #ty {
-                                let mut value = 0_u32;
-                                for i in #start_byte..=#end_byte {
-                                    value <<= 8;
-                                    value |= self.0[i] as u32;
-                                }
-
-                                // mask off 0..start_bit
-                                value &= !0_u32 << #start_bit;
-                                // mask off end_bit..
-                                if #end_bit > 0 {
-                                    value &= !0_u32 >> (32 - #end_bit);
-                                }
-
-                                (value >> #start_bit) as _
-                            }
-                        }
-                    }
-                    FieldTy::Enum => {
-                        quote! {
-                            #vis fn #field_name(
-                                &self
-                            ) -> Result<#ty, <#ty as core::convert::TryFrom<u32>>::Error> {
-                                let mut value = 0_u32;
-                                for i in #start_byte..=#end_byte {
-                                    value <<= 8;
-                                    value |= self.0[i] as u32;
-                                }
-
-                                // mask off 0..start_bit
-                                value &= !0_u32 << #start_bit;
-                                // mask off end_bit..
-                                if #end_bit > 0 {
-                                    value &= !0_u32 >> (32 - #end_bit);
-                                }
-
-                                let value = value >> #start_bit;
-                                #ty::try_from(value)
-                            }
-                        }
-                    }
-                    FieldTy::ByteArray => {
-                        assert!(
-                            start_bit == 0 && end_bit == 0,
-                            "byte arrays must have start & end bit set to zero"
-                        );
-
-                        quote! {
-                            #vis fn #field_name(&self) -> &#ty {
-                                return self
-                                    .0[#start_byte..=#end_byte]
-                                    .try_into()
-                                    .unwrap(); // could make this unsafe and drop the try
-                            }
-                        }
-                    }
-                };
-                getters.push(getter);
+                let start_byte = ranges.byte.start() as usize;
+                let end_byte = ranges.byte.end_inclusive() as usize;
 
                 // e.g. `_x: u8` -> `set__x()`
                 //                       ^ rustc warns about this
                 let setter_attr = quote! { #[allow(non_snake_case)] };
 
                 let setter_name = format_ident!("set_{}", field_name);
-                let setter = match field_ty {
+
+                let (getter, setter) = match field_ty {
                     FieldTy::Bool => {
-                        quote! {
-                            #setter_attr
-                            #vis fn #setter_name(&mut self, val: bool) {
-                                let bit_value = if val { 1 } else { 0 };
-                                self.0[#start_byte] &= !(1 << #start_bit);
-                                self.0[#start_byte] |= (bit_value << #start_bit) as u8;
+                        let start_bit = match &ranges.bits {
+                            None => 0,
+                            Some(bits) => {
+                                if bits.end_inclusive() != bits.start() {
+                                    panic!("Bit range for a bool must be a single number (e.g. 1, or 1..=1)")
+                                }
+                                bits.start()
                             }
-                        }
+                        };
+
+                        (
+                            quote! {
+                                #vis fn #field_name(&self) -> bool {
+                                    let byte = self.0[#start_byte];
+                                    (byte >> #start_bit) & 1 != 0
+                                }
+                            },
+                            quote! {
+                                #setter_attr
+                                #vis fn #setter_name(&mut self, val: bool) {
+                                    let bit_value = if val { 1 } else { 0 };
+                                    self.0[#start_byte] &= !(1 << #start_bit);
+                                    self.0[#start_byte] |= (bit_value << #start_bit) as u8;
+                                }
+                            },
+                        )
                     }
                     FieldTy::Integer | FieldTy::Enum => {
-                        quote! {
-                            #setter_attr
-                            #vis fn #setter_name(&mut self, val: #ty) {
-                                let mut mask = (!0_u32 << #start_bit);
-                                if #end_bit > 0 {
-                                    mask &= (!0_u32 >> (32 - #end_bit - 1));
-                                }
+                        let (start_bit, end_bit) = match &ranges.bits {
+                            None => (0, ranges.byte.len() * 8),
+                            Some(bits) => (bits.start(), bits.end_inclusive()),
+                        };
 
-                                let mut new = ((val as u32) << #start_bit) & mask;
+                        (
+                            if matches!(field_ty, FieldTy::Enum) {
+                                quote! {
+                                    #vis fn #field_name(
+                                        &self
+                                    ) -> Result<#ty, <#ty as core::convert::TryFrom<u32>>::Error> {
+                                        let mut value = 0_u32;
+                                        for i in #start_byte..=#end_byte {
+                                            value <<= 8;
+                                            value |= self.0[i] as u32;
+                                        }
 
-                                for i in (#start_byte..=#end_byte).rev() {
-                                    self.0[i] = self.0[i] & (!mask as u8) | (new as u8);
-                                    new >>= 8;
-                                    mask >>= 8;
+                                        // mask off 0..start_bit
+                                        value &= !0_u32 << #start_bit;
+                                        // mask off end_bit..
+                                        if #end_bit > 0 {
+                                            value &= !0_u32 >> (32 - #end_bit);
+                                        }
+
+                                        let value = value >> #start_bit;
+                                        #ty::try_from(value)
+                                    }
                                 }
-                            }
-                        }
+                            } else {
+                                quote! {
+                                    #vis fn #field_name(&self) -> #ty {
+                                        let mut value = 0_u32;
+                                        for i in #start_byte..=#end_byte {
+                                            value <<= 8;
+                                            value |= self.0[i] as u32;
+                                        }
+
+                                        // mask off 0..start_bit
+                                        value &= !0_u32 << #start_bit;
+                                        // mask off end_bit..
+                                        if #end_bit > 0 {
+                                            value &= !0_u32 >> (32 - #end_bit);
+                                        }
+
+                                        (value >> #start_bit) as _
+                                    }
+                                }
+                            },
+                            quote! {
+                                #setter_attr
+                                #vis fn #setter_name(&mut self, val: #ty) {
+                                    let mut mask = (!0_u32 << #start_bit);
+                                    if #end_bit > 0 {
+                                        mask &= !0_u32 >> (32 - #end_bit - 1);
+                                    }
+
+                                    let mut new = ((val as u32) << #start_bit) & mask;
+
+                                    for i in (#start_byte..=#end_byte).rev() {
+                                        self.0[i] = self.0[i] & (!mask as u8) | (new as u8);
+                                        new >>= 8;
+                                        mask >>= 8;
+                                    }
+                                }
+                            },
+                        )
                     }
                     FieldTy::ByteArray => {
-                        quote! {
-                            #setter_attr
-                            #vis fn #setter_name(&mut self, bytes: &#ty) {
-                                self.0[#start_byte..=#end_byte]
-                                    .copy_from_slice(bytes);
-                            }
-                        }
+                        assert!(ranges.bits.is_none(), "byte arrays cannot have a bit-range");
+
+                        (
+                            quote! {
+                                #vis fn #field_name(&self) -> &#ty {
+                                    return self
+                                        .0[#start_byte..=#end_byte]
+                                        .try_into()
+                                        .unwrap(); // could make this unsafe and drop the try
+                                }
+                            },
+                            quote! {
+                                #setter_attr
+                                #vis fn #setter_name(&mut self, bytes: &#ty) {
+                                    self.0[#start_byte..=#end_byte]
+                                        .copy_from_slice(bytes);
+                                }
+                            },
+                        )
                     }
                 };
+                getters.push(getter);
                 setters.push(setter);
             }
         }
 
         assert!(
             found,
-            "No #[bit_byte(...)] attribute found for {}",
+            "No #[overlay(...)] attribute found for {}",
             field_name
         );
     }
@@ -323,7 +347,7 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
         quote! {}
     };
 
-    let byte_count = last_byte + 1;
+    let byte_count = last_byte as usize + 1;
     let vis = input.vis;
     let attrs = input.attrs;
 
@@ -385,13 +409,6 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
     TokenStream::from(expanded)
 }
 
-fn unwrap_int_lit(args: &mut dyn Iterator<Item = &NestedMeta>, name: &str) -> usize {
-    match args.next() {
-        Some(NestedMeta::Lit(Lit::Int(lit))) => lit.base10_parse().unwrap(),
-        _ => panic!("Expected integer literal for {name}"),
-    }
-}
-
 fn match_type(ty: &Type) -> Option<FieldTy> {
     match ty {
         Type::Path(path) => {
@@ -414,4 +431,134 @@ fn match_type(ty: &Type) -> Option<FieldTy> {
     }
 
     None
+}
+
+impl Parse for OverlayAttribute {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let (mut byte, mut bits) = (None, None);
+
+        loop {
+            if input.is_empty() {
+                break;
+            }
+
+            let keyword = input.parse::<Ident>()?.to_string();
+
+            input.parse::<Token![=]>()?;
+
+            let (is_byte, is_singular) = match keyword.as_str() {
+                "byte" => (true, true),
+                "bytes" => (true, false),
+                "bit" => (false, true),
+                "bits" => (false, false),
+                _ => panic!("invalid specifier {keyword}"),
+            };
+
+            let span: SingleOrRange = input.parse()?;
+
+            match (is_singular, &span) {
+                (true, SingleOrRange::Single(_))
+                | (false, SingleOrRange::RangeIncl(_) | SingleOrRange::Range(_)) => {}
+                _ => {
+                    // TODO: compile_error!()
+                    panic!("invalid combination of {keyword} and single/range span");
+                }
+            }
+
+            let old = if is_byte {
+                byte.replace(span)
+            } else {
+                bits.replace(span)
+            };
+            if old.is_some() {
+                panic!("duplicate specifier for {keyword}");
+            }
+
+            if input.parse::<Token![,]>().is_err() {
+                break;
+            }
+        }
+
+        if !input.is_empty() {
+            panic!("unused tokens");
+        }
+
+        Ok(Self {
+            byte: byte.expect("no byte specifier"),
+            bits,
+        })
+    }
+}
+
+impl Parse for SingleOrRange {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let start = input.parse::<LitInt>()?.base10_parse()?;
+
+        let range_incl = input.parse::<Token![..=]>().is_ok();
+        let mut range = false;
+        if !range_incl {
+            range = input.parse::<Token![..]>().is_ok();
+        }
+
+        let mut end = None::<LitInt>;
+        if range_incl || range {
+            end = input.parse()?;
+        }
+
+        match end {
+            None => Ok(Self::Single(start)),
+            Some(end) => {
+                let end = end.base10_parse()?;
+
+                Ok(if range {
+                    Self::Range(start..end)
+                } else {
+                    Self::RangeIncl(start..=end)
+                })
+            }
+        }
+    }
+}
+
+impl SingleOrRange {
+    fn assert_range_valid(&self, what: &str) {
+        match self {
+            SingleOrRange::Single(_) => {}
+            SingleOrRange::Range(r) => assert!(
+                r.start < r.end,
+                "start {what} ({}) must be less than end {what} ({})",
+                r.start,
+                r.end,
+            ),
+            SingleOrRange::RangeIncl(r) => assert!(
+                r.start() <= r.end(),
+                "start {what} ({}) must not be greater than end {what} ({})",
+                r.start(),
+                r.end(),
+            ),
+        }
+    }
+
+    fn end_inclusive(&self) -> u32 {
+        match self {
+            &SingleOrRange::Single(x) => x,
+            SingleOrRange::Range(r) => r.end - 1,
+            SingleOrRange::RangeIncl(r) => *r.end(),
+        }
+    }
+
+    fn start(&self) -> u32 {
+        match self {
+            &SingleOrRange::Single(x) => x,
+            SingleOrRange::Range(r) => r.start,
+            SingleOrRange::RangeIncl(r) => *r.start(),
+        }
+    }
+
+    fn len(&self) -> u32 {
+        let start = self.start();
+        let end = self.end_inclusive();
+
+        end - start + 1
+    }
 }
