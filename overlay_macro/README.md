@@ -28,4 +28,5 @@ This will create a wrapper struct around an array of bytes, with generated gette
 
 - Support for nested structs
 - Support for individual fields larger than `u32` ?
-- `compile_error!()`
+- `compile_error!()` / remove `unwrap` / `expect`
+- Upgrade to `syn` 2.0
