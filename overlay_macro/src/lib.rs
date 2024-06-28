@@ -1,6 +1,8 @@
+use std::ops::{Range, RangeInclusive};
+
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, Data, DeriveInput, Fields, Lit, Meta, NestedMeta, Type};
+use syn::{parse::{Parse, ParseStream}, parse_macro_input, Data, DeriveInput, Fields, Ident, Lit, LitInt, Meta, NestedMeta, Token, Type};
 
 enum FieldTy {
     Integer,
@@ -9,17 +11,34 @@ enum FieldTy {
     ByteArray,
 }
 
+#[derive(Debug)]
+struct OverlayAttribute {
+    byte: SingleOrRange,
+    bits: Option<SingleOrRange>,
+}
+
+#[derive(Debug)]
+enum SingleOrRange {
+    Single(u32),
+    Range(Range<u32>),
+    RangeIncl(RangeInclusive<u32>),
+}
+
 /**
  * Attribute macro for overlaying a byte/bit-level description of a struct on arbitrary byte data.
  *
  * # Field Attributes
  *
- * | Name          | Description |
- * |---------------|-------------|
- * | start_byte    | The byte in the struct where this field starts (zero based) |
- * | end_byte      | The byte in the struct where this field ends (zero based, inclusive) |
- * | start_bit     | The bit within the collection of bytes demarked above, where this field starts (zero based, inclusive) |
- * | end_bit       | The bit within the collection of bytes demarked above, where this field ends (zero based, inclusive) |
+ * #[overlay(...)] on a field can provide several parameters:
+ * `byte` - the byte at which this field resides
+ * `bytes` - the range of bytes at which this field resides
+ * `bits` - the range of relevant bits within the byte/byte-range
+ *
+ * Either `byte` or `bytes` must be specified.
+ * `bits` is optional and defaults to the entire byte range.
+ * All are zero-based.
+ *
+ * For arrays and struct members, bits may not be specified.
  *
  * # Example
  *
@@ -29,16 +48,16 @@ enum FieldTy {
  * #[overlay]
  * #[derive(Clone, Debug)]
  * pub struct InquiryCommand {
- *     #[bit_byte(7, 0, 0, 0)]
+ *     #[overlay(byte=0, bits=0..8)]
  *     pub op_code: u8,
  *
- *     #[bit_byte(0, 0, 1, 1)]
+ *     #[overlay(byte=1)] // bits inferred from `bool` type
  *     pub enable_vital_product_data: bool,
  *
- *     #[bit_byte(7, 0, 2, 2)]
+ *     #[overlay(byte=2, bits=0..=7)] // `..=` can be used as an alternative to `..`
  *     pub page_code: u8,
  *
- *     #[bit_byte(7, 0, 3, 4)]
+ *     #[overlay(bytes=3..=4)] // if not bits are given, the whole byte range is used
  *     pub allocation_length: u16,
  * }
  * ```
@@ -64,7 +83,7 @@ enum FieldTy {
  *
  * #[overlay]
  * pub struct Person {
- *     #[bit_byte(4, 1, 0, 0)]
+ *     #[overlay(byte=0, bits=1..=4)] // nothing lives at bit 0
  *     transport: Transport,
  * }
  *
@@ -84,7 +103,7 @@ enum FieldTy {
  * assert_eq!(Transport::try_from(1), Ok(Transport::Bus));
  * ```
  *
- * The enum representation doesn't matter, provided the `bit_byte` declaration leaves room for
+ * The enum representation doesn't matter, provided the `overlay` declaration leaves room for
  * it. A `u32` is currently used as the intermediate type for masking and storing the enum's
  * representation.
  *
@@ -127,9 +146,13 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
 
         let mut found = false;
         for attr in field.attrs {
-            const ATTR_NAME: &str = "bit_byte";
+            const ATTR_NAME: &str = "overlay";
             if attr.path.is_ident(ATTR_NAME) {
                 found = true;
+
+                let parsed: OverlayAttribute = attr.parse_args().unwrap();
+
+                eprintln!("parsed: {:?}", parsed);
 
                 let Ok(Meta::List(meta_list)) = attr.parse_meta() else {
                     panic!("start/end bit and start/end byte required as arguments to {ATTR_NAME}");
@@ -414,4 +437,100 @@ fn match_type(ty: &Type) -> Option<FieldTy> {
     }
 
     None
+}
+
+impl Parse for OverlayAttribute {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let (mut byte, mut bits) = (None, None);
+
+        //eprintln!("parsing overlay attr");
+
+        loop {
+            if input.is_empty() {
+                break;
+            }
+
+            let keyword = input.parse::<Ident>()?.to_string();
+            //eprintln!("  got kw {keyword}");
+
+            input.parse::<Token![=]>()?;
+            //eprintln!("  got `=`");
+
+            let (is_byte, is_singular) = match keyword.as_str() {
+                "byte" => (true, true),
+                "bytes" => (true, false),
+                "bit" => (false, true),
+                "bits" => (false, false),
+                _ => panic!("invalid specifier {keyword}"),
+            };
+
+            let span: SingleOrRange = input.parse()?;
+
+            match (is_singular, &span) {
+                (true, SingleOrRange::Single(_)) |
+                (false, SingleOrRange::RangeIncl(_) | SingleOrRange::Range(_)) => {}
+                _ => {
+                    // TODO: compile_error!()
+                    panic!("invalid combination of {keyword} and single/range span");
+                }
+            }
+
+            let old = if is_byte {
+                byte.replace(span)
+            } else {
+                bits.replace(span)
+            };
+            if old.is_some() {
+                panic!("duplicate specifier for {keyword}");
+            }
+
+            if input.parse::<Token![,]>().is_err() {
+                break;
+            }
+        }
+
+        if !input.is_empty() {
+            panic!("unused tokens");
+        }
+
+        Ok(Self { byte: byte.expect("no byte specifier"), bits })
+    }
+}
+
+impl Parse for SingleOrRange {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        //eprintln!("  parsing SingleOrRange");
+        let start = input.parse::<LitInt>()?.base10_parse()?;
+
+        //eprintln!("  got start: {start}");
+
+        let range_incl = input.parse::<Token![..=]>().is_ok();
+        let mut range = false;
+        if !range_incl {
+            range = input.parse::<Token![..]>().is_ok();
+        }
+
+        //eprintln!("  got range: {}", if range_incl { "..=" } else if range { ".." } else { "<none>" });
+
+        let mut end = None::<LitInt>;
+        if range_incl || range {
+            end = input.parse()?;
+        } else {
+            //eprintln!("  no end");
+        }
+
+        match end {
+            None => Ok(Self::Single(start)),
+            Some(end) => {
+                let end = end.base10_parse()?;
+                //eprintln!("  got end: {end}");
+
+                Ok(if range {
+                    Self::Range(start..end)
+                } else {
+                    Self::RangeIncl(start..=end)
+                })
+            }
+        }
+    }
 }
