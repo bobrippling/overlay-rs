@@ -107,12 +107,37 @@ fn debug() {
         &out,
         "InquiryCommand { op_code: 5, product_data: true, page_code: 3, allocation_length: 260 }"
     );
+
+    #[overlay]
+    #[derive(Debug)]
+    struct Outer {
+        #[overlay(byte = 0)]
+        header: u8,
+
+        #[overlay(bytes=1..=3, nested)]
+        inner: Inner,
+    }
+
+    #[overlay]
+    #[derive(Debug)]
+    struct Inner {
+        #[overlay(bytes=0..=1, bits=0..16)]
+        a: u16,
+
+        #[overlay(byte = 2)]
+        b: u8,
+    }
+
+    let o = Outer::overlay(&[ 1, 2, 3, 4]).unwrap();
+    assert_eq!(
+        &format!("{:?}", o),
+        "Outer { header: 1, inner: Inner { a: 515, b: 4 } }"
+    );
 }
 
 #[test]
 fn byte_array_getters() {
     #[overlay]
-    #[derive(Debug)]
     struct Abc {
         #[overlay(byte=0, bits=0..=7)]
         pad: u8,
@@ -162,7 +187,6 @@ fn enum_getters_setters() {
     }
 
     #[overlay]
-    #[derive(Debug)]
     struct Abc {
         #[overlay(byte = 0)] // no bits given, so 0..=7 is implied
         e0: E,
@@ -196,7 +220,6 @@ fn enum_repr() {
     }
 
     #[overlay]
-    #[derive(Debug)]
     struct Abc {
         #[overlay(bytes=0..=1)] // byte 0..=1, i.e. 2 bytes / u16
         e: E, // even though E is repr(u8)
@@ -226,7 +249,6 @@ fn enum_repr() {
 #[test]
 fn edge_cases() {
     #[overlay]
-    #[derive(Debug)]
     struct Inner {
         #[overlay(bytes=0..=1, bits=0..16)]
         a: u16,
@@ -291,7 +313,6 @@ fn u32_example() {
 #[test]
 fn nested_struct() {
     #[overlay]
-    #[derive(Debug)]
     struct Outer {
         #[overlay(byte = 0)]
         header: u8,
@@ -302,7 +323,6 @@ fn nested_struct() {
     assert_eq!(Outer::BYTE_LEN, 4);
 
     #[overlay]
-    #[derive(Debug)]
     struct Inner {
         #[overlay(bytes=0..=1, bits=0..16)]
         a: u16,
