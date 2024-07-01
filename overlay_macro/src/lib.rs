@@ -93,6 +93,42 @@ enum FieldTy {
  * the enum's entries from their actual discriminant values.
  *
  * [`num_enum`]: https://crates.io/crates/num_enum
+ *
+ * # Nested structs
+ *
+ * Struct members are supported, and must reside on a byte-boundary.
+ * Both the outer and inner struct must be `#[overlay]` to permit interpreting a `&[u8]` as an
+ * instance of them.
+ * As the macro cannot tell if a type is an `enum` or a `struct`, the `bit_byte` attribute must
+ * contain `nested` to specify that this is a `struct`.
+ *
+ * ```rust
+ * use overlay_macro::overlay;
+ *
+ * #[overlay]
+ * struct Inner {
+ *     #[bit_byte(7, 0, 0, 0)] // bits must be zero for nested structs
+ *     x: u8,
+ *
+ *     #[bit_byte(31, 0, 1, 4)] // bits must be zero for nested structs
+ *     y: u32,
+ * }
+ *
+ * #[overlay]
+ * pub struct Outer {
+ *     #[bit_byte(7, 0, 0, 0)]
+ *     padding: u8,
+ *
+ *     #[bit_byte(0, 0, 1, 5, nested)] // bits must be zero for nested structs
+ *     inner: Inner,
+ * }
+ *
+ * fn f(outer: &Outer) -> u32 {
+ *     let inner: &Inner = outer.inner();
+ *
+ *     inner.y()
+ * }
+ * ```
  */
 
 #[proc_macro_attribute]
