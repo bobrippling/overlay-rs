@@ -243,14 +243,14 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
                                 let p = &self.0[#start_byte..=#end_byte];
 
                                 // could make this unsafe
-                                #ty::overlay(p).unwrap()
+                                overlay::Overlay::overlay(p).unwrap()
                             }
 
                             #setter_attr
                             #vis fn #setter_name(&mut self) -> &mut #ty {
                                 let p = &mut self.0[#start_byte..=#end_byte];
 
-                                #ty::overlay_mut(p).unwrap()
+                                overlay::Overlay::overlay_mut(p).unwrap()
                             }
                         }
                     }
