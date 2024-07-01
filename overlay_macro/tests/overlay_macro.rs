@@ -141,10 +141,10 @@ fn enum_getters_setters() {
         Z,
     }
 
-    impl TryFrom<u32> for E {
+    impl TryFrom<u8> for E {
         type Error = ();
 
-        fn try_from(v: u32) -> Result<Self, Self::Error> {
+        fn try_from(v: u8) -> Result<Self, Self::Error> {
             Ok(match v {
                 0 => Self::X,
                 1 => Self::Y,
@@ -177,4 +177,41 @@ fn enum_getters_setters() {
 
     abc.set_e1(E::Y);
     assert_eq!(abc.as_bytes(), &[E::Z as _, ((E::Y as u8) << 2) | 3, 7]);
+}
+
+#[test]
+fn enum_repr() {
+    #[derive(Debug, Eq, PartialEq)]
+    #[repr(u8)]
+    enum E {
+        A,
+        B,
+    }
+
+    #[overlay]
+    #[derive(Debug)]
+    struct Abc {
+        #[bit_byte(7, 0, 0, 1)] // byte 0..=1, i.e. 2 bytes / u16
+        e: E, // even though E is repr(u8)
+    }
+
+    impl TryFrom<u16> for E {
+        type Error = ();
+
+        fn try_from(v: u16) -> Result<Self, Self::Error> {
+            Ok(match v {
+                0 => Self::A,
+                1 => Self::B,
+                _ => return Err(()),
+            })
+        }
+    }
+
+    let mut bytes = [0, E::B as u8];
+    let abc = Abc::overlay_mut(&mut bytes).unwrap();
+
+    assert_eq!(abc.e(), Ok(E::B));
+
+    abc.set_e(E::A);
+    assert_eq!(abc.as_bytes(), &[0, E::A as _]);
 }

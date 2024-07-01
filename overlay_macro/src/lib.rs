@@ -51,8 +51,11 @@ enum FieldTy {
  *
  * # Enums
  *
- * Enum members are supported, provided they come with a `TryFrom<u32>` implementation.
+ * Enum members are supported, provided they come with a `TryFrom<_>` implementation.
  * This can be implemented automatically by using the [`num_enum`] crate.
+ *
+ * The primitive for the `TryFrom` comes not from the enum's `repr` attribute, but from the space
+ * allocated to the enum in the struct, as part of the `bit_byte` attribute.
  *
  * ```rust
  * use overlay_macro::overlay;
@@ -64,14 +67,14 @@ enum FieldTy {
  *
  * #[overlay]
  * pub struct Person {
- *     #[bit_byte(4, 1, 0, 0)]
+ *     #[bit_byte(4, 1, 0, 0)] // 1 byte, so TryFrom<u8> is used
  *     transport: Transport,
  * }
  *
- * impl TryFrom<u32> for Transport {
+ * impl TryFrom<u8> for Transport {
  *     type Error = ();
  *
- *     fn try_from(v: u32) -> Result<Self, Self::Error> {
+ *     fn try_from(v: u8) -> Result<Self, Self::Error> {
  *         Ok(match v {
  *             v if v == Self::Bike as _ => Self::Bike,
  *             v if v == Self::Bus  as _ => Self::Bus,
@@ -83,10 +86,6 @@ enum FieldTy {
  *
  * assert_eq!(Transport::try_from(1), Ok(Transport::Bus));
  * ```
- *
- * The enum representation doesn't matter, provided the `bit_byte` declaration leaves room for
- * it. A `u32` is currently used as the intermediate type for masking and storing the enum's
- * representation.
  *
  * Note that the overlay conversion may not round-trip if the `TryFrom` implementation doesn't map
  * the enum's entries from their actual discriminant values.
@@ -189,10 +188,18 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
                         }
                     }
                     FieldTy::Enum => {
+                        let enum_repr = match end_byte - start_byte + 1 {
+                            1 => quote! { u8 },
+                            2 => quote! { u16 },
+                            4 => quote! { u32 },
+                            8 => quote! { u64 },
+                            size => panic!("can't determine size of field for {size}-byte enum"),
+                        };
+
                         quote! {
                             #vis fn #field_name(
                                 &self
-                            ) -> Result<#ty, <#ty as core::convert::TryFrom<u32>>::Error> {
+                            ) -> Result<#ty, <#ty as core::convert::TryFrom<#enum_repr>>::Error> {
                                 let mut value = 0_u32;
                                 for i in #start_byte..=#end_byte {
                                     value <<= 8;
@@ -207,6 +214,7 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
                                 }
 
                                 let value = value >> #start_bit;
+                                let value = value as #enum_repr;
                                 #ty::try_from(value)
                             }
                         }
