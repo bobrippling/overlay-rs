@@ -4,23 +4,23 @@ use overlay_macro::overlay;
 #[overlay]
 #[derive(Clone, Debug, Default)]
 pub struct InquiryCommand {
-    #[bit_byte(7, 0, 0, 0)]
+    #[overlay(byte=0, bits=0..8)]
     pub op_code: u8,
 
-    #[bit_byte(0, 0, 1, 1)]
+    #[overlay(byte = 1, bit = 0)]
     pub product_data: bool,
 
-    #[bit_byte(7, 1, 2, 2)]
+    #[overlay(byte=2, bits=1..=7)]
     pub page_code: u8,
 
-    #[bit_byte(13, 0, 3, 4)]
+    #[overlay(bytes=3..=4, bits=0..14)]
     pub allocation_length: u16,
 }
 
 #[overlay]
 #[derive(Clone)]
 pub struct NoDebug {
-    #[bit_byte(7, 0, 0, 0)]
+    #[overlay(byte=0, bits=0..=7)]
     pub op_code: u8,
 }
 
@@ -71,6 +71,13 @@ fn integer_bool_setters() {
         inq.set_page_code(158);
         assert_eq!(inq.0, [5, 5, 1 | (158 << 1), 5, 1]);
     }
+
+    {
+        // something with the high-bit set
+        bytes[0] = 0b1000_1000;
+        let inq = InquiryCommand::overlay_mut(&mut bytes).unwrap();
+        assert_eq!(inq.op_code(), 0b1000_1000);
+    }
 }
 
 #[test]
@@ -107,13 +114,13 @@ fn byte_array_getters() {
     #[overlay]
     #[derive(Debug)]
     struct Abc {
-        #[bit_byte(7, 0, 0, 0)]
+        #[overlay(byte=0, bits=0..=7)]
         pad: u8,
 
-        #[bit_byte(0, 0, 1, 3)]
+        #[overlay(bytes=1..=3)]
         bytes: [u8; 3],
 
-        #[bit_byte(7, 0, 4, 4)]
+        #[overlay(byte=4, bits=0..=7)]
         pad2: u8,
     }
     let mut bytes = [1, 2, 3, 4, 5];
@@ -157,13 +164,13 @@ fn enum_getters_setters() {
     #[overlay]
     #[derive(Debug)]
     struct Abc {
-        #[bit_byte(7, 0, 0, 0)]
+        #[overlay(byte = 0)] // no bits given, so 0..=7 is implied
         e0: E,
 
-        #[bit_byte(4, 2, 1, 1)]
+        #[overlay(byte=1, bits=2..=4)]
         e1: E,
 
-        #[bit_byte(7, 0, 2, 2)]
+        #[overlay(byte=2, bits=0..=7)]
         u: u8,
     }
     let mut bytes = [E::Y as _, (3 << 2) | 3, 7];
@@ -191,7 +198,7 @@ fn enum_repr() {
     #[overlay]
     #[derive(Debug)]
     struct Abc {
-        #[bit_byte(7, 0, 0, 1)] // byte 0..=1, i.e. 2 bytes / u16
+        #[overlay(bytes=0..=1)] // byte 0..=1, i.e. 2 bytes / u16
         e: E, // even though E is repr(u8)
     }
 
@@ -214,4 +221,69 @@ fn enum_repr() {
 
     abc.set_e(E::A);
     assert_eq!(abc.as_bytes(), &[0, E::A as _]);
+}
+
+#[test]
+fn edge_cases() {
+    #[overlay]
+    #[derive(Debug)]
+    struct Inner {
+        #[overlay(bytes=0..=1, bits=0..16)]
+        a: u16,
+
+        #[overlay(byte=2)]
+        b: u8,
+    }
+
+    let mut bytes = [0xff, 0xff, 0xff];
+    let inner: &mut Inner = Inner::overlay_mut(&mut bytes).unwrap();
+    assert_eq!(inner.a(), 0xffff);
+    assert_eq!(inner.b(), 0xff);
+
+    inner.set_a(0);
+    assert_eq!(inner.as_bytes(), &[0, 0, 0xff]);
+
+    inner.set_a(0xffff);
+    inner.set_b(0);
+    assert_eq!(&bytes, &[0xff, 0xff, 0]);
+
+    let mut bytes = [0; 3];
+    let inner: &mut Inner = Inner::overlay_mut(&mut bytes).unwrap();
+    assert_eq!(inner.a(), 0);
+    assert_eq!(inner.b(), 0);
+
+    inner.set_a(0xffff);
+    assert_eq!(inner.as_bytes(), &[0xff, 0xff, 0]);
+
+    inner.set_a(0);
+    inner.set_b(0xff);
+    assert_eq!(&bytes, &[0, 0, 0xff]);
+}
+
+#[test]
+fn u32_example() {
+    #[overlay]
+    #[derive(Clone, Copy, Eq, PartialEq, Debug)]
+    pub struct ReadCapacity10Response {
+        #[overlay(bytes= 0..= 3)]
+        pub max_lba: u32,
+
+        #[overlay(bytes= 4..= 7)]
+        pub block_size: u32,
+    }
+
+    let mut readcap = ReadCapacity10Response::new();
+
+    readcap.set_max_lba(0xf1_b3_c7_d9);
+    readcap.set_block_size(0x9d_7c_3b_1f);
+
+    let mut expected = [0; 8];
+
+    expected[0..4].copy_from_slice(&0xf1_b3_c7_d9_u32.to_be_bytes());
+    expected[4..8].copy_from_slice(&0x9d_7c_3b_1f_u32.to_be_bytes());
+
+    assert_eq!(
+        readcap.as_bytes(),
+        &expected,
+    );
 }
