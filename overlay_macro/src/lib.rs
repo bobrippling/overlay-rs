@@ -11,6 +11,7 @@ enum FieldTy {
     Integer,
     Bool,
     Enum,
+    Struct,
     ByteArray,
 }
 
@@ -18,6 +19,7 @@ enum FieldTy {
 struct OverlayAttribute {
     byte: SingleOrRange,
     bits: Option<SingleOrRange>,
+    nested: bool,
 }
 
 #[derive(Debug)]
@@ -113,6 +115,42 @@ enum SingleOrRange {
  * the enum's entries from their actual discriminant values.
  *
  * [`num_enum`]: https://crates.io/crates/num_enum
+ *
+ * # Nested structs
+ *
+ * Struct members are supported, and must reside on a byte-boundary.
+ * Both the outer and inner struct must be `#[overlay]` to permit interpreting a `&[u8]` as an
+ * instance of them.
+ * As the macro cannot tell if a type is an `enum` or a `struct`, the `overlay` attribute must
+ * contain `nested` to specify that this is a `struct`.
+ *
+ * ```rust
+ * use overlay_macro::overlay;
+ *
+ * #[overlay]
+ * struct Inner {
+ *     #[overlay(byte=0)]
+ *     x: u8,
+ *
+ *     #[overlay(bytes=1..5, bits=0..=31)]
+ *     y: u32,
+ * }
+ *
+ * #[overlay]
+ * pub struct Outer {
+ *     #[overlay(byte=0)]
+ *     padding: u8,
+ *
+ *     #[overlay(bytes=1..6, nested)] // bits must not be specified for nested structs
+ *     inner: Inner,
+ * }
+ *
+ * fn f(outer: &Outer) -> u32 {
+ *     let inner: &Inner = outer.inner();
+ *
+ *     inner.y()
+ * }
+ * ```
  */
 
 #[proc_macro_attribute]
@@ -154,26 +192,30 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                 let ranges: OverlayAttribute = attr.parse_args().unwrap();
 
+                let nested = ranges.nested;
+                ranges.byte.assert_range_valid("byte");
                 if let Some(bits) = &ranges.bits {
                     bits.assert_range_valid("bit");
+                    assert!(!nested, "cannot have a nested struct at a bit-offset");
                 }
-
-                ranges.byte.assert_range_valid("byte");
 
                 last_byte = last_byte.max(ranges.byte.end_inclusive());
 
                 let ty = &field.ty;
                 let vis = &field.vis;
 
-                let field_ty = match_type(ty)
-                    .expect("invalid field type: expected integer, bool, C-style enum or [u8; N]");
-
-                let start_byte = ranges.byte.start() as usize;
-                let end_byte = ranges.byte.end_inclusive() as usize;
+                let field_ty = if nested {
+                    Some(FieldTy::Struct)
+                } else {
+                    match_type(ty)
+                }.expect("invalid field type: expected integer, bool, C-style enum, nested struct or [u8; N]");
 
                 // e.g. `_x: u8` -> `set__x()`
                 //                       ^ rustc warns about this
                 let setter_attr = quote! { #[allow(non_snake_case)] };
+
+                let start_byte = ranges.byte.start() as usize;
+                let end_byte = ranges.byte.end_inclusive() as usize;
 
                 let setter_name = format_ident!("set_{}", field_name);
 
@@ -284,6 +326,29 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
                                     }
                                 }
                             },
+                        )
+                    }
+                    FieldTy::Struct => {
+                        let setter_name = format_ident!("{}_mut", field_name);
+
+                        (
+                            quote! {
+                                #vis fn #field_name(&self) -> &#ty {
+                                    let p = &self.0[#start_byte..=#end_byte];
+
+                                    // could make this unsafe
+                                    overlay::Overlay::overlay(p).unwrap()
+                                }
+
+                                #setter_attr
+                                #vis fn #setter_name(&mut self) -> &mut #ty {
+                                    let p = &mut self.0[#start_byte..=#end_byte];
+
+                                    overlay::Overlay::overlay_mut(p).unwrap()
+                                }
+                            },
+                            // setter isn't provided, we just expose a &mut to the nested struct (above, with the getter)
+                            quote! {},
                         )
                     }
                     FieldTy::ByteArray => {
@@ -448,7 +513,7 @@ fn match_type(ty: &Type) -> Option<FieldTy> {
 
 impl Parse for OverlayAttribute {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        let (mut byte, mut bits) = (None, None);
+        let (mut byte, mut bits, mut nested) = (None, None, false);
 
         loop {
             if input.is_empty() {
@@ -457,34 +522,38 @@ impl Parse for OverlayAttribute {
 
             let keyword = input.parse::<Ident>()?.to_string();
 
-            input.parse::<Token![=]>()?;
-
-            let (is_byte, is_singular) = match keyword.as_str() {
-                "byte" => (true, true),
-                "bytes" => (true, false),
-                "bit" => (false, true),
-                "bits" => (false, false),
-                _ => panic!("invalid specifier {keyword}"),
-            };
-
-            let span: SingleOrRange = input.parse()?;
-
-            match (is_singular, &span) {
-                (true, SingleOrRange::Single(_))
-                | (false, SingleOrRange::RangeIncl(_) | SingleOrRange::Range(_)) => {}
-                _ => {
-                    // TODO: compile_error!()
-                    panic!("invalid combination of {keyword} and single/range span");
-                }
-            }
-
-            let old = if is_byte {
-                byte.replace(span)
+            if keyword == "nested" {
+                nested = true;
             } else {
-                bits.replace(span)
-            };
-            if old.is_some() {
-                panic!("duplicate specifier for {keyword}");
+                input.parse::<Token![=]>()?;
+
+                let (is_byte, is_singular) = match keyword.as_str() {
+                    "byte" => (true, true),
+                    "bytes" => (true, false),
+                    "bit" => (false, true),
+                    "bits" => (false, false),
+                    _ => panic!("invalid specifier {keyword}"),
+                };
+
+                let span: SingleOrRange = input.parse()?;
+
+                match (is_singular, &span) {
+                    (true, SingleOrRange::Single(_))
+                    | (false, SingleOrRange::RangeIncl(_) | SingleOrRange::Range(_)) => {}
+                    _ => {
+                        // TODO: compile_error!()
+                        panic!("invalid combination of {keyword} and single/range span");
+                    }
+                }
+
+                let old = if is_byte {
+                    byte.replace(span)
+                } else {
+                    bits.replace(span)
+                };
+                if old.is_some() {
+                    panic!("duplicate specifier for {keyword}");
+                }
             }
 
             if input.parse::<Token![,]>().is_err() {
@@ -499,6 +568,7 @@ impl Parse for OverlayAttribute {
         Ok(Self {
             byte: byte.expect("no byte specifier"),
             bits,
+            nested,
         })
     }
 }

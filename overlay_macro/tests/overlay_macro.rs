@@ -287,3 +287,52 @@ fn u32_example() {
         &expected,
     );
 }
+
+#[test]
+fn nested_struct() {
+    #[overlay]
+    #[derive(Debug)]
+    struct Outer {
+        #[overlay(byte = 0)]
+        header: u8,
+
+        #[overlay(bytes=1..=3, nested)]
+        inner: Inner,
+    }
+    assert_eq!(Outer::BYTE_LEN, 4);
+
+    #[overlay]
+    #[derive(Debug)]
+    struct Inner {
+        #[overlay(bytes=0..=1, bits=0..16)]
+        a: u16,
+
+        #[overlay(byte = 2)]
+        b: u8,
+    }
+    assert_eq!(Inner::BYTE_LEN, 3);
+
+    let bytes = [23, 186, 3, 9];
+    {
+        let inner = Inner::overlay(&bytes[1..]).unwrap();
+        assert_eq!(inner.a(), 186 << 8 | 3);
+        assert_eq!(inner.b(), 9);
+    }
+
+    let outer = Outer::overlay(&bytes).unwrap();
+    assert_eq!(outer.header(), 23);
+
+    let inner: &_ = outer.inner();
+    assert_eq!(inner as *const _ as *const u8, &bytes[1] as *const _);
+    assert_eq!(inner.a(), 186 << 8 | 3);
+    assert_eq!(inner.b(), 9);
+
+    let mut bytes = bytes;
+    let outer = Outer::overlay_mut(&mut bytes).unwrap();
+    let inner = outer.inner_mut();
+    inner.set_a(65439);
+    inner.set_b(253);
+    outer.set_header(187);
+
+    assert_eq!(bytes, [187, (65439_u16 >> 8) as u8, 65439_u16 as u8, 253]);
+}
