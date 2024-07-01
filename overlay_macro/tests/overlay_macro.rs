@@ -177,3 +177,24 @@ fn enum_getters_setters() {
     abc.set_e1(E::Y);
     assert_eq!(abc.as_bytes(), &[E::Z as _, ((E::Y as u8) << 2) | 3, 7]);
 }
+
+#[test]
+fn edge_cases() {
+    #[overlay]
+    #[derive(Debug)]
+    struct Inner {
+        #[overlay(bytes=0..=1, bits=0..16)]
+        a: u16,
+
+        #[overlay(byte = 2)]
+        b: u8,
+    }
+
+    let mut bytes = [23, 0xba /* 186 */, 3, 9];
+    let inner: &mut Inner = Inner::overlay_mut(&mut bytes[1..]).unwrap();
+    assert_eq!(inner.a(), 186 << 8 | 3);
+    assert_eq!(inner.b(), 9);
+
+    inner.set_a(231 << 8 | 231);
+    assert_eq!(&bytes, &[23, 231, 231, 9]);
+}

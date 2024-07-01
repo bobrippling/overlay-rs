@@ -229,7 +229,7 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
                                         value &= !0_u32 << #start_bit;
                                         // mask off end_bit..
                                         if #end_bit > 0 {
-                                            value &= !0_u32 >> (32 - #end_bit);
+                                            value &= !0_u32 >> (31 - #end_bit);
                                         }
 
                                         let value = value >> #start_bit;
@@ -249,7 +249,7 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
                                         value &= !0_u32 << #start_bit;
                                         // mask off end_bit..
                                         if #end_bit > 0 {
-                                            value &= !0_u32 >> (32 - #end_bit);
+                                            value &= !0_u32 >> (31 - #end_bit);
                                         }
 
                                         (value >> #start_bit) as _
@@ -261,7 +261,7 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
                                 #vis fn #setter_name(&mut self, val: #ty) {
                                     let mut mask = (!0_u32 << #start_bit);
                                     if #end_bit > 0 {
-                                        mask &= !0_u32 >> (32 - #end_bit - 1);
+                                        mask &= !0_u32 >> (31 - #end_bit - 1);
                                     }
 
                                     let mut new = ((val as u32) << #start_bit) & mask;
