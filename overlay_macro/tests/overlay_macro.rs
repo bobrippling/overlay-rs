@@ -128,7 +128,7 @@ fn debug() {
         b: u8,
     }
 
-    let o = Outer::overlay(&[ 1, 2, 3, 4]).unwrap();
+    let o = Outer::overlay(&[1, 2, 3, 4]).unwrap();
     assert_eq!(
         &format!("{:?}", o),
         "Outer { header: 1, inner: Inner { a: 515, b: 4 } }"
@@ -253,7 +253,7 @@ fn edge_cases() {
         #[overlay(bytes=0..=1, bits=0..16)]
         a: u16,
 
-        #[overlay(byte=2)]
+        #[overlay(byte = 2)]
         b: u8,
     }
 
@@ -306,10 +306,7 @@ fn u32_example() {
     expected[0..4].copy_from_slice(&0xf1_b3_c7_d9_u32.to_be_bytes());
     expected[4..8].copy_from_slice(&0x9d_7c_3b_1f_u32.to_be_bytes());
 
-    assert_eq!(
-        readcap.as_bytes(),
-        &expected,
-    );
+    assert_eq!(readcap.as_bytes(), &expected,);
 }
 
 #[test]
