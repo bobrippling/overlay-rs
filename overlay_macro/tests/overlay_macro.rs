@@ -4,7 +4,7 @@ use overlay_macro::overlay;
 #[overlay]
 #[derive(Clone, Debug, Default)]
 pub struct InquiryCommand {
-    #[overlay(byte=0, bits=0..=8)]
+    #[overlay(byte=0, bits=0..8)]
     pub op_code: u8,
 
     #[overlay(byte = 1, bit = 0)]
@@ -186,15 +186,59 @@ fn edge_cases() {
         #[overlay(bytes=0..=1, bits=0..16)]
         a: u16,
 
-        #[overlay(byte = 2)]
+        #[overlay(byte=2)]
         b: u8,
     }
 
-    let mut bytes = [23, 0xba /* 186 */, 3, 9];
-    let inner: &mut Inner = Inner::overlay_mut(&mut bytes[1..]).unwrap();
-    assert_eq!(inner.a(), 186 << 8 | 3);
-    assert_eq!(inner.b(), 9);
+    let mut bytes = [0xff, 0xff, 0xff];
+    let inner: &mut Inner = Inner::overlay_mut(&mut bytes).unwrap();
+    assert_eq!(inner.a(), 0xffff);
+    assert_eq!(inner.b(), 0xff);
 
-    inner.set_a(231 << 8 | 231);
-    assert_eq!(&bytes, &[23, 231, 231, 9]);
+    inner.set_a(0);
+    assert_eq!(inner.as_bytes(), &[0, 0, 0xff]);
+
+    inner.set_a(0xffff);
+    inner.set_b(0);
+    assert_eq!(&bytes, &[0xff, 0xff, 0]);
+
+    let mut bytes = [0; 3];
+    let inner: &mut Inner = Inner::overlay_mut(&mut bytes).unwrap();
+    assert_eq!(inner.a(), 0);
+    assert_eq!(inner.b(), 0);
+
+    inner.set_a(0xffff);
+    assert_eq!(inner.as_bytes(), &[0xff, 0xff, 0]);
+
+    inner.set_a(0);
+    inner.set_b(0xff);
+    assert_eq!(&bytes, &[0, 0, 0xff]);
+}
+
+#[test]
+fn u32_example() {
+    #[overlay]
+    #[derive(Clone, Copy, Eq, PartialEq, Debug)]
+    pub struct ReadCapacity10Response {
+        #[overlay(bytes= 0..= 3)]
+        pub max_lba: u32,
+
+        #[overlay(bytes= 4..= 7)]
+        pub block_size: u32,
+    }
+
+    let mut readcap = ReadCapacity10Response::new();
+
+    readcap.set_max_lba(0xf1_b3_c7_d9);
+    readcap.set_block_size(0x9d_7c_3b_1f);
+
+    let mut expected = [0; 8];
+
+    expected[0..4].copy_from_slice(&0xf1_b3_c7_d9_u32.to_be_bytes());
+    expected[4..8].copy_from_slice(&0x9d_7c_3b_1f_u32.to_be_bytes());
+
+    assert_eq!(
+        readcap.as_bytes(),
+        &expected,
+    );
 }

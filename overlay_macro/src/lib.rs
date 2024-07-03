@@ -208,9 +208,33 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
                         )
                     }
                     FieldTy::Integer | FieldTy::Enum => {
+                        let lim = (0, ranges.byte.len() * 8 - 1);
                         let (start_bit, end_bit) = match &ranges.bits {
-                            None => (0, ranges.byte.len() * 8),
+                            None => lim,
                             Some(bits) => (bits.start(), bits.end_inclusive()),
+                        };
+
+                        if start_bit > lim.1 || end_bit > lim.1 {
+                            panic!(
+                                "start and end bits ({start_bit} & {end_bit}) must be inside the byte-range ({}..={})",
+                                lim.0,
+                                lim.1
+                            );
+                        }
+
+                        let getter_body = quote! {
+                            let mut value = 0_u32;
+                            for i in #start_byte..=#end_byte {
+                                value <<= 8;
+                                value |= self.0[i] as u32;
+                            }
+
+                            // mask off end_bit..
+                            if #end_bit > 0 {
+                                value &= !0_u32 >> (31 - #end_bit);
+                            }
+
+                            value >>= #start_bit;
                         };
 
                         (
@@ -219,49 +243,26 @@ pub fn overlay(macro_attrs: TokenStream, item: TokenStream) -> TokenStream {
                                     #vis fn #field_name(
                                         &self
                                     ) -> Result<#ty, <#ty as core::convert::TryFrom<u32>>::Error> {
-                                        let mut value = 0_u32;
-                                        for i in #start_byte..=#end_byte {
-                                            value <<= 8;
-                                            value |= self.0[i] as u32;
-                                        }
+                                        #getter_body
 
-                                        // mask off 0..start_bit
-                                        value &= !0_u32 << #start_bit;
-                                        // mask off end_bit..
-                                        if #end_bit > 0 {
-                                            value &= !0_u32 >> (31 - #end_bit);
-                                        }
-
-                                        let value = value >> #start_bit;
-                                        #ty::try_from(value)
+                                        #ty::try_from(value as u32)
                                     }
                                 }
                             } else {
                                 quote! {
                                     #vis fn #field_name(&self) -> #ty {
-                                        let mut value = 0_u32;
-                                        for i in #start_byte..=#end_byte {
-                                            value <<= 8;
-                                            value |= self.0[i] as u32;
-                                        }
+                                        #getter_body
 
-                                        // mask off 0..start_bit
-                                        value &= !0_u32 << #start_bit;
-                                        // mask off end_bit..
-                                        if #end_bit > 0 {
-                                            value &= !0_u32 >> (31 - #end_bit);
-                                        }
-
-                                        (value >> #start_bit) as _
+                                        value as _
                                     }
                                 }
                             },
                             quote! {
                                 #setter_attr
                                 #vis fn #setter_name(&mut self, val: #ty) {
-                                    let mut mask = (!0_u32 << #start_bit);
+                                    let mut mask = !0_u32 << #start_bit;
                                     if #end_bit > 0 {
-                                        mask &= !0_u32 >> (31 - #end_bit - 1);
+                                        mask &= !0_u32 >> (31 - #end_bit);
                                     }
 
                                     let mut new = ((val as u32) << #start_bit) & mask;
