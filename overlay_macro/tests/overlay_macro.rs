@@ -257,6 +257,8 @@ fn edge_cases() {
         b: u8,
     }
 
+    assert_eq!(Inner::BYTE_LEN, 3);
+
     let mut bytes = [0xff, 0xff, 0xff];
     let inner: &mut Inner = Inner::overlay_mut(&mut bytes).unwrap();
     assert_eq!(inner.a(), 0xffff);
