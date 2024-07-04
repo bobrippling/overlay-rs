@@ -34,7 +34,7 @@ enum SingleOrRange {
  *
  * # Field Attributes
  *
- * #[overlay(...)] on a field can provide several parameters:
+ * `#[overlay(...)]` on a field can provide several parameters:
  * `byte` - the byte at which this field resides
  * `bytes` - the range of bytes at which this field resides
  * `bits` - the range of relevant bits within the byte/byte-range
