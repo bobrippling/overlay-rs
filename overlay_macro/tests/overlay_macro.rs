@@ -285,6 +285,67 @@ fn edge_cases() {
 }
 
 #[test]
+fn awkward_offsets_and_overlap() {
+    #[overlay]
+    struct Inner {
+        #[overlay(bytes=0..=1, bits=3..14)]
+        a: u16,
+
+        #[overlay(bytes=0..=1, bits=9..=15)]
+        b: u16,
+
+        #[overlay(bytes=0..4, bits=5..=27)]
+        c: u32,
+    }
+
+    let mut bytes = [
+        0b0101_0111, // 31..24
+        0b1000_0101, // 23..16
+        0b1111_1111, // 15.. 8
+        0b1111_1000, //  7.. 0
+    ];
+
+    let inner: &mut Inner = Overlay::overlay_mut(&mut bytes).unwrap();
+
+    let orig_a = (0b0101_0111_1000_0101 & 0b0011_1111_1111_1000) >> 3;
+    let orig_b = (0b0101_0111_1000_0101 & 0b1111_1110_0000_0000) >> 9;
+    let orig_c = (0b0101_0111_1000_0101_1111_1111_1111_1000
+        & 0b0000_1111_1111_1111_1111_1111_1110_0000)
+        >> 5;
+    assert_eq!(inner.a(), orig_a);
+    assert_eq!(inner.b(), orig_b);
+    assert_eq!(inner.c(), orig_c);
+
+    inner.set_a(0);
+    assert_eq!(inner.a(), 0);
+    assert_eq!(
+        inner.b(),
+        (0b0100_0000_0000_0101 & 0b1111_1110_0000_0000) >> 9
+    );
+    assert_eq!(
+        inner.c(),
+        (0b0100_0000_0000_0101_1111_1111_1111_1000 & 0b0000_1111_1111_1111_1111_1111_1110_0000)
+            >> 5
+    );
+
+    inner.set_a(orig_a);
+    inner.set_b(0);
+    assert_eq!(inner.a(), orig_a & 0b0000_0000_0011_1111);
+    assert_eq!(inner.b(), 0);
+    assert_eq!(
+        inner.c(),
+        (0b0000_0001_1000_0101_1111_1111_1111_1000 & 0b0000_1111_1111_1111_1111_1111_1110_0000)
+            >> 5
+    );
+
+    inner.set_b(orig_b);
+    inner.set_c(0);
+    assert_eq!(inner.a(), 0b0001_0000_0000_0000 >> 3);
+    assert_eq!(inner.b(), 0b0101_0000_0000_0000 >> 9);
+    assert_eq!(inner.c(), 0);
+}
+
+#[test]
 fn u32_example() {
     #[overlay]
     #[derive(Clone, Copy, Eq, PartialEq, Debug)]
