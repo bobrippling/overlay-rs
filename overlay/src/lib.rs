@@ -1,4 +1,5 @@
 #![no_std]
+#![warn(missing_docs)]
 
 pub trait Overlay {
     fn overlay(bytes: &[u8]) -> Result<&Self, Error>;

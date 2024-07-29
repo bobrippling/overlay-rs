@@ -1,3 +1,5 @@
+#![warn(missing_docs)]
+
 use std::ops::{Range, RangeInclusive};
 
 use proc_macro::TokenStream;
